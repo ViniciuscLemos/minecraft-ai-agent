@@ -5,6 +5,22 @@ import { checkAborted, countItem, goNear, SkillError, sleep, type SkillContext }
 
 const UP = new Vec3(0, 1, 0);
 
+export type Facing = 'north' | 'south' | 'east' | 'west';
+
+// mineflayer's yaw for looking each way (0 is north, counter-clockwise)
+const YAW: Record<Facing, number> = { north: 0, west: Math.PI / 2, south: Math.PI, east: -Math.PI / 2 };
+
+// how far a survival player can reach, with a little margin under what the server allows
+const REACH = 4.8;
+
+/** Whether a player with feet at `feet` can reach the block at `pos` (eye to the block's box). */
+export function canReach(feet: Vec3, pos: Vec3) {
+  const eye = feet.offset(0, 1.62, 0);
+  const clamp = (v: number, min: number) => Math.min(Math.max(v, min), min + 1);
+  const closest = new Vec3(clamp(eye.x, pos.x), clamp(eye.y, pos.y), clamp(eye.z, pos.z));
+  return eye.distanceTo(closest) <= REACH;
+}
+
 // the six neighbours, the block below first: it's the one that is almost always there
 const FACES = [new Vec3(0, -1, 0), new Vec3(1, 0, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1), new Vec3(0, 0, -1), UP];
 
@@ -30,8 +46,11 @@ export async function placeNear(ctx: SkillContext, itemName: string): Promise<Bl
   throw new SkillError(`There's no free spot around me to put the ${itemName}.`);
 }
 
-/** Places `itemName` exactly at `pos`, against any solid neighbour. */
-export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3): Promise<Block> {
+/**
+ * Places `itemName` exactly at `pos`, against any solid neighbour. Stairs and doors take
+ * the direction the player is looking, so with `facing` it looks that way first.
+ */
+export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3, facing?: Facing): Promise<Block> {
   const { bot } = ctx;
   checkAborted(ctx);
   const item = bot.inventory.items().find((it) => it.name === itemName);
@@ -45,14 +64,29 @@ export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3): P
   if (!face) throw new SkillError(`Nothing to put the ${itemName} against at ${pos.x} ${pos.y} ${pos.z}.`);
   const reference = bot.blockAt(pos.plus(face))!;
 
-  if (bot.entity.position.distanceTo(pos.offset(0.5, 0.5, 0.5)) > 4.5) await goNear(ctx, pos, 3);
+  if (!canReach(bot.entity.position, pos)) await goNear(ctx, pos, 3);
   for (let attempt = 1; ; attempt++) {
     // looked up again on every try: the stack in hand may have run out in the meantime
     const stack = bot.inventory.items().find((it) => it.name === itemName);
     if (!stack) throw new SkillError(`I ran out of ${itemName}.`);
     await bot.equip(stack, 'hand');
     try {
-      await bot.placeBlock(reference, face.scaled(-1));
+      if (facing) {
+        // look the right way, then place without turning to the block (that would change it)
+        const target = pos.offset(0.5, 0.5, 0.5);
+        const eye = bot.entity.position.offset(0, 1.62, 0);
+        const pitch = Math.atan2(target.y - eye.y, Math.hypot(target.x - eye.x, target.z - eye.z));
+        await bot.look(YAW[facing], pitch, true);
+        await sleep(100); // the new rotation has to reach the server before the click
+        // clicking low on a side face keeps stairs right side up
+        await (bot as unknown as PlaceWithOptions)._placeBlockWithOptions(reference, face.scaled(-1), {
+          forceLook: 'ignore',
+          half: 'bottom',
+          swingArm: 'right',
+        });
+      } else {
+        await bot.placeBlock(reference, face.scaled(-1));
+      }
     } catch (error) {
       // with a busy server the block update can come after mineflayer stops waiting,
       // so it only counts as a failure if the block still isn't there a moment later
@@ -98,4 +132,9 @@ function isFree(ctx: SkillContext, pos: Vec3) {
 
 export function haveBlocks(ctx: SkillContext, itemName: string) {
   return countItem(ctx.bot, (n) => n === itemName);
+}
+
+// mineflayer has this but doesn't export its type
+interface PlaceWithOptions {
+  _placeBlockWithOptions(reference: Block, face: Vec3, options: { forceLook: 'ignore'; half: 'bottom'; swingArm: 'right' }): Promise<void>;
 }
