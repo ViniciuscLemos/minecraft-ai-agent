@@ -7,7 +7,8 @@
     "server": "node scripts/start-server.ts",
     "bot": "node --env-file-if-exists=.env src/index.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:scenario": "vitest run --config vitest.scenario.config.ts"
   },
   "license": "MIT",
   "type": "module",
