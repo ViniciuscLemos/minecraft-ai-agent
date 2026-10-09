@@ -70,6 +70,8 @@ export function unixSocketDir(tmp = os.tmpdir(), platform = process.platform): s
 }
 
 export interface ServerOptions {
+  // a server folder other than .server/ (the demo uses its own world settings)
+  folder?: string;
   port?: number;
   // folder for the world; a fresh one gives every test run a clean map
   universe?: string;
@@ -78,7 +80,8 @@ export interface ServerOptions {
 }
 
 export function spawnServer(options: ServerOptions = {}): ChildProcess {
-  if (!existsSync(path.join(SERVER_FOLDER, 'server.jar'))) {
+  const folder = options.folder ?? SERVER_FOLDER;
+  if (!existsSync(path.join(folder, 'server.jar'))) {
     throw new Error('No server yet. Run: npm run server:setup');
   }
   const memory = options.memory ?? process.env.MC_SERVER_MEMORY ?? '2G';
@@ -88,5 +91,5 @@ export function spawnServer(options: ServerOptions = {}): ChildProcess {
   args.push('-jar', 'server.jar', 'nogui');
   if (options.port) args.push('--port', String(options.port));
   if (options.universe) args.push('--universe', options.universe);
-  return spawn(findJava(), args, { cwd: SERVER_FOLDER, stdio: options.stdio ?? 'inherit' });
+  return spawn(findJava(), args, { cwd: folder, stdio: options.stdio ?? 'inherit' });
 }

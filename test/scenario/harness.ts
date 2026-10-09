@@ -15,10 +15,10 @@ export interface TestServer {
   stop(): Promise<void>;
 }
 
-export async function startServer(port: number): Promise<TestServer> {
+export async function startServer(port: number, folder?: string): Promise<TestServer> {
   // a new folder each time, so every run starts from the same untouched world
   const universe = mkdtempSync(path.join(os.tmpdir(), 'mc-scenario-'));
-  const server = spawnServer({ port, universe, memory: '1G', stdio: ['pipe', 'pipe', 'pipe'] });
+  const server = spawnServer({ folder, port, universe, memory: '1G', stdio: ['pipe', 'pipe', 'pipe'] });
 
   let output = '';
   await new Promise<void>((resolve, reject) => {

@@ -8,17 +8,23 @@
     "bot": "node --env-file-if-exists=.env src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "test:scenario": "vitest run --config vitest.scenario.config.ts"
+    "test:scenario": "vitest run --config vitest.scenario.config.ts",
+    "demo": "node scripts/demo.ts"
   },
   "license": "MIT",
   "type": "module",
   "dependencies": {
     "mineflayer": "^4.39.0",
     "mineflayer-pathfinder": "^2.4.5",
+    "prismarine-viewer": "^1.33.0",
     "vec3": "^0.1.10"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "@types/pngjs": "^6.0.5",
+    "gifenc": "^1.0.3",
+    "playwright-core": "^1.64.0",
+    "pngjs": "^7.0.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
