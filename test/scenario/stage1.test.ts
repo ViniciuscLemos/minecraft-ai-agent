@@ -48,6 +48,8 @@ describe('stage 1 on a real server', () => {
 
   it('stops when told to', async () => {
     await nextChatAfter(() => owner.chat('!stop'), /^Stopped/);
+    // it finishes the step it was in the middle of, so it can slide a bit before it stands still
+    await sleep(1000);
     const before = agent.entity.position.clone();
     server.command('tp Tester 0 -60 -15');
     await sleep(3000);
