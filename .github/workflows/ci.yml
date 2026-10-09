@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  # The bot against a real Minecraft server: slower, but it's what catches the
+  # problems that only show up in the game (paths, chat, timing).
+  scenario:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      # Downloads the official server from Mojang (hash checked). The repo owner has
+      # read and accepted the Minecraft EULA (https://aka.ms/MinecraftEULA) for these runs.
+      - run: npm run server:setup -- --accept-eula
+      - run: npm run test:scenario
