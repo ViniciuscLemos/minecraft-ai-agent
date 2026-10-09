@@ -64,7 +64,10 @@ export function goNear(ctx: SkillContext, pos: Vec3, range: number) {
 
 /** Walks to the items lying around `pos`, so whatever was just broken ends up in the inventory. */
 export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
-  // dropped items can't be picked up for half a second
+  // dropped items can't be picked up for half a second; meanwhile the pathfinder drops
+  // whatever it planned before the block broke (right after a dig it can get stuck
+  // planning around a world that just changed)
+  ctx.bot.pathfinder.setGoal(null);
   await sleep(600);
   const tried = new Set<number>();
   const findDrop = () =>
