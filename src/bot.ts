@@ -57,11 +57,10 @@ export function createAgentBot(config: Config): Bot {
 }
 
 // the skill running right now, so a new order or !stop can cancel it
-const tasks = new WeakMap<Bot, AbortController>();
+const tasks = new WeakMap<Bot, { controller: AbortController; done: Promise<unknown> }>();
 
 export function cancelTask(bot: Bot) {
-  tasks.get(bot)?.abort();
-  tasks.delete(bot);
+  tasks.get(bot)?.controller.abort();
 }
 
 /** Runs a skill and reports back in the chat. Resolves with the message it said. */
@@ -69,9 +68,16 @@ export async function runSkill(bot: Bot, name: string, args: Record<string, unkn
   const skill = findSkill(name);
   if (!skill) return say(bot, `I don't have a skill called ${name}.`);
 
-  cancelTask(bot);
+  // the previous skill has to really finish first: its pathfinder.stop() would otherwise
+  // land on the new skill's path and cancel it
+  const previous = tasks.get(bot);
+  if (previous) {
+    previous.controller.abort();
+    await Promise.race([previous.done, new Promise((resolve) => setTimeout(resolve, 5000))]);
+  }
   const controller = new AbortController();
-  tasks.set(bot, controller);
+  let finish = () => {};
+  tasks.set(bot, { controller, done: new Promise<void>((resolve) => (finish = resolve)) });
   log(bot, `skill ${name} ${JSON.stringify(args)}`);
   try {
     const result = await skill.run({ bot, signal: controller.signal, log: (text) => log(bot, text) }, args);
@@ -82,7 +88,8 @@ export async function runSkill(bot: Bot, name: string, args: Record<string, unkn
     log(bot, `skill ${name} crashed: ${(error as Error).stack}`);
     return say(bot, `Something went wrong: ${(error as Error).message}`);
   } finally {
-    if (tasks.get(bot) === controller) tasks.delete(bot);
+    if (tasks.get(bot)?.controller === controller) tasks.delete(bot);
+    finish();
   }
 }
 
@@ -147,4 +154,6 @@ export function position(bot: Bot) {
 
 function log(bot: Bot, text: string) {
   console.log(`[${new Date().toLocaleTimeString()}] ${bot.username}: ${text}`);
+  // the web panel shows the same lines
+  bot.emit('agent_log' as never, text as never);
 }

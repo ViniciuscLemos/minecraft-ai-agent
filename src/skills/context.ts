@@ -45,7 +45,9 @@ export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Go
       } catch (error) {
         checkAborted(ctx);
         const message = (error as Error).message ?? '';
-        if (!/no path|timeout|took to long/i.test(message)) throw error;
+        // "path was stopped" without our own abort: something else (an older task being
+        // cancelled) stopped the pathfinder, so it's worth another try
+        if (!/no path|timeout|took to long|path was stopped/i.test(message)) throw error;
         if (attempt === 2) throw new SkillError(`I can't find a way to ${where}.`);
         await sleep(1000);
       }
@@ -65,10 +67,14 @@ export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
   // dropped items can't be picked up for half a second
   await sleep(600);
   const tried = new Set<number>();
-  for (;;) {
-    const drop = Object.values(ctx.bot.entities).find(
+  const findDrop = () =>
+    Object.values(ctx.bot.entities).find(
       (entity) => entity.name === 'item' && !tried.has(entity.id) && entity.position.distanceTo(pos) <= radius,
     );
+  // on a busy server the item can show up a couple of seconds after the block breaks
+  for (let waited = 0; !findDrop() && waited < 2500; waited += 100) await sleep(100);
+  for (;;) {
+    const drop = findDrop();
     if (!drop) return;
     tried.add(drop.id);
     // next to it is enough (players grab items about a block away), and the exact spot is
