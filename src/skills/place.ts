@@ -24,6 +24,12 @@ export function canReach(feet: Vec3, pos: Vec3) {
 // the six neighbours, the block below first: it's the one that is almost always there
 const FACES = [new Vec3(0, -1, 0), new Vec3(1, 0, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1), new Vec3(0, 0, -1), UP];
 
+/** The block names an item becomes once placed (a torch on a wall is a wall_torch). */
+export function blockNames(itemName: string): string[] {
+  if (itemName.endsWith('torch')) return [itemName, itemName.replace(/torch$/, 'wall_torch')];
+  return [itemName];
+}
+
 /** Places one `itemName` on the ground next to the bot and returns the new block. */
 export async function placeNear(ctx: SkillContext, itemName: string): Promise<Block> {
   const { bot } = ctx;
@@ -57,7 +63,7 @@ export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3, fa
   if (!item) throw new SkillError(`I don't have any ${itemName}.`);
 
   const existing = bot.blockAt(pos);
-  if (existing?.name === itemName) return existing;
+  if (existing && blockNames(itemName).includes(existing.name)) return existing;
   if (!isFree(ctx, pos)) throw new SkillError(`Something is already at ${pos.x} ${pos.y} ${pos.z}.`);
 
   const face = FACES.find((dir) => bot.blockAt(pos.plus(dir))?.boundingBox === 'block');
@@ -100,13 +106,15 @@ export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3, fa
     break;
   }
   const placed = bot.blockAt(pos)!;
-  if (placed.name !== itemName) throw new SkillError(`The ${itemName} didn't stay at ${pos.x} ${pos.y} ${pos.z}.`);
+  if (!blockNames(itemName).includes(placed.name)) {
+    throw new SkillError(`The ${itemName} didn't stay at ${pos.x} ${pos.y} ${pos.z}.`);
+  }
   return placed;
 }
 
 async function becomes(ctx: SkillContext, pos: Vec3, name: string) {
   for (let waited = 0; waited < 1500; waited += 100) {
-    if (ctx.bot.blockAt(pos)?.name === name) return true;
+    if (blockNames(name).includes(ctx.bot.blockAt(pos)?.name ?? '')) return true;
     await sleep(100);
   }
   return false;
