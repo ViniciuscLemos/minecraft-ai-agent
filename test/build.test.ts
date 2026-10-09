@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vec3 } from 'vec3';
-import { BLUEPRINTS, cottage, house, materialsNeeded, outsideSpot } from '../src/skills/build.ts';
+import { BLUEPRINTS, cottage, farmhouse, house, materialsNeeded, outsideSpot, type Blueprint } from '../src/skills/build.ts';
 
 describe('house blueprint', () => {
   it('has walls with a door gap and a full roof', () => {
@@ -17,8 +17,8 @@ describe('house blueprint', () => {
     expect(blocks.at(-1)!.at).toEqual(new Vec3(2, 3, 2)); // the middle of the roof goes last
   });
 
-  it('knows a cottage, a house and a hut', () => {
-    expect(Object.keys(BLUEPRINTS)).toEqual(['cottage', 'house', 'hut']);
+  it('knows a farmhouse, a cottage, a house and a hut', () => {
+    expect(Object.keys(BLUEPRINTS)).toEqual(['farmhouse', 'cottage', 'house', 'hut']);
   });
 });
 
@@ -70,5 +70,66 @@ describe('outsideSpot', () => {
     const spot = outsideSpot(new Vec3(-7, -58, 5), corner, blueprint);
     const inside = spot.x >= -8 && spot.x < -4 && spot.z >= 4 && spot.z < 8;
     expect(inside).toBe(false);
+  });
+});
+
+/** Places the blocks the way build() does, on flat ground, and returns what never had support. */
+function stuckBlocks({ blocks }: Blueprint) {
+  const solid = new Set<string>();
+  const key = (v: Vec3) => `${v.x},${v.y},${v.z}`;
+  const sides = [new Vec3(0, -1, 0), new Vec3(1, 0, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1), new Vec3(0, 0, -1), new Vec3(0, 1, 0)];
+  const supported = (v: Vec3) => v.y === 0 || sides.some((d) => solid.has(key(v.plus(d))));
+  const todo = [...blocks];
+  for (let progress = true; progress && todo.length; ) {
+    progress = false;
+    for (let i = 0; i < todo.length; i++) {
+      if (supported(todo[i]!.at)) {
+        solid.add(key(todo[i]!.at));
+        todo.splice(i, 1);
+        progress = true;
+        break;
+      }
+    }
+  }
+  return todo.map((b) => key(b.at));
+}
+
+describe('farmhouse blueprint', () => {
+  const house = farmhouse();
+  const at = (x: number, y: number, z: number) => house.blocks.find((b) => b.at.equals(new Vec3(x, y, z)));
+
+  it('never puts two blocks in the same spot', () => {
+    const keys = house.blocks.map((b) => b.at.toString());
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('can be built block by block: every block has something to go against', () => {
+    expect(stuckBlocks(house)).toEqual([]);
+    expect(stuckBlocks(cottage())).toEqual([]);
+  });
+
+  it('has a foundation, a chimney through the roof, torches and furniture', () => {
+    expect(at(0, 0, 0)!.material).toBe('cobblestone');
+    expect(at(8, 7, 2)!.material).toBe('cobblestone'); // the top of the chimney, above the ridge
+    expect(at(3, 2, -1)!.material).toBe('torch');
+    expect(house.blocks.map((b) => b.material)).toEqual(expect.arrayContaining(['crafting_table', 'furnace', 'chest']));
+    expect(house.blocks.at(-1)).toMatchObject({ material: 'spruce_door', facing: 'south' });
+  });
+
+  it('adds up the materials it takes', () => {
+    expect(Object.fromEntries(materialsNeeded(house.blocks))).toEqual({
+      cobblestone: 31,
+      oak_planks: 21,
+      spruce_stairs: 67,
+      birch_planks: 32,
+      oak_log: 31,
+      glass_pane: 10,
+      spruce_planks: 10,
+      torch: 3,
+      crafting_table: 1,
+      furnace: 1,
+      chest: 1,
+      spruce_door: 1,
+    });
   });
 });

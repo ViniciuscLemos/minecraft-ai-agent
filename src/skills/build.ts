@@ -3,12 +3,12 @@
 import pathfinderPkg from 'mineflayer-pathfinder';
 import { Vec3 } from 'vec3';
 import { checkAborted, countItem, isLog, isPlanks, SkillError, walk, type SkillContext } from './context.ts';
-import { canReach, placeAt, type Facing } from './place.ts';
+import { blockNames, canReach, placeAt, type Facing } from './place.ts';
 
 const { goals } = pathfinderPkg;
 
 // "planks" and "log" accept any wood; anything else is an exact item name
-export type Material = 'planks' | 'log' | 'oak_stairs' | 'oak_door' | 'glass_pane';
+export type Material = string;
 
 export interface BlueprintBlock {
   // offset from the corner with the smallest x and z, at ground level (y = 0 is the first layer)
@@ -22,6 +22,8 @@ export interface Blueprint {
   width: number; // x
   depth: number; // z
   blocks: BlueprintBlock[];
+  // height of the floor inside, where the bot stands to reach the roof (1 on a foundation)
+  floorY?: number;
 }
 
 /** A plain box: walls with a door gap in the front and a flat roof. */
@@ -108,14 +110,132 @@ export function cottage(width = 7, depth = 5): Blueprint {
   return { name: 'cottage', width, depth, blocks };
 }
 
+export interface Palette {
+  foundation: string;
+  frame: string; // logs
+  walls: string;
+  floor: string;
+  roof: string; // stairs
+  ridge: string;
+  door: string;
+}
+
+export const DEFAULT_PALETTE: Palette = {
+  foundation: 'cobblestone',
+  frame: 'oak_log',
+  walls: 'birch_planks',
+  floor: 'oak_planks',
+  roof: 'spruce_stairs',
+  ridge: 'spruce_planks',
+  door: 'spruce_door',
+};
+
+/**
+ * A farmhouse: a cobblestone foundation with a step up to the door, a log frame, pale
+ * plank walls with double windows, a dark pitched roof that overhangs on every side, a
+ * stone chimney on one gable, torches by the door, and a crafting table, a furnace and
+ * a chest inside. Everything is within reach from the ground or from the floor inside.
+ */
+export function farmhouse(palette: Palette = DEFAULT_PALETTE): Blueprint {
+  const width = 9;
+  const depth = 5;
+  const blocks: BlueprintBlock[] = [];
+  const taken = new Set<string>();
+  const add = (x: number, y: number, z: number, material: Material, facing?: Facing) => {
+    const key = `${x},${y},${z}`;
+    if (taken.has(key)) return;
+    taken.add(key);
+    blocks.push({ at: new Vec3(x, y, z), material, facing });
+  };
+  const doorX = 4;
+  const ridgeZ = 2;
+  const chimney = (x: number, z: number) => x === width - 1 && z === ridgeZ;
+  const edge = (x: number, z: number) => x === 0 || z === 0 || x === width - 1 || z === depth - 1;
+  const windows = new Set(['1,0', '2,0', '6,0', '7,0', '2,4', '3,4', '5,4', '6,4', '0,2']);
+
+  // the chimney is added first so nothing else takes its spots
+  for (let y = 0; y <= 7; y++) add(width - 1, y, ridgeZ, 'cobblestone');
+
+  // foundation all around, a floor inside, and a step in front of the door
+  for (let x = 0; x < width; x++) {
+    for (let z = 0; z < depth; z++) add(x, 0, z, edge(x, z) ? palette.foundation : palette.floor);
+  }
+  add(doorX, 0, -1, palette.roof, 'south');
+
+  // walls, 2 high: logs in the corners, double windows
+  for (let y = 1; y <= 2; y++) {
+    for (let x = 0; x < width; x++) {
+      for (let z = 0; z < depth; z++) {
+        if (!edge(x, z) || chimney(x, z)) continue;
+        if (z === 0 && x === doorX) continue;
+        if (y === 2 && windows.has(`${x},${z}`)) continue;
+        const corner = (x === 0 || x === width - 1) && (z === 0 || z === depth - 1);
+        add(x, y, z, corner ? palette.frame : palette.walls);
+      }
+    }
+  }
+  for (const key of windows) {
+    const [x, z] = key.split(',').map(Number);
+    add(x!, 2, z!, 'glass_pane');
+  }
+
+  // a log beam around the top of the walls
+  for (let x = 0; x < width; x++) {
+    for (let z = 0; z < depth; z++) if (edge(x, z)) add(x, 3, z, palette.frame);
+  }
+
+  // gables, with a little window in the one without the chimney
+  add(0, 4, ridgeZ, 'glass_pane');
+  for (let level = 1; level <= ridgeZ; level++) {
+    for (let z = level; z < depth - level; z++) {
+      add(0, 3 + level, z, palette.walls);
+      add(width - 1, 3 + level, z, palette.walls);
+    }
+  }
+
+  // the roof: stairs going up from both sides, one block past the walls, then the ridge
+  for (let level = 0; level <= ridgeZ; level++) {
+    for (let x = -1; x <= width; x++) {
+      add(x, 3 + level, level - 1, palette.roof, 'south');
+      add(x, 3 + level, depth - level, palette.roof, 'north');
+    }
+  }
+  for (let x = -1; x <= width; x++) add(x, 4 + ridgeZ, ridgeZ, palette.ridge);
+
+  // torches by the door and inside, then the furniture
+  add(doorX - 1, 2, -1, 'torch');
+  add(doorX + 1, 2, -1, 'torch');
+  add(doorX, 2, depth - 2, 'torch');
+  add(1, 1, depth - 2, 'crafting_table');
+  add(2, 1, depth - 2, 'furnace');
+  add(width - 2, 1, depth - 2, 'chest');
+
+  add(doorX, 1, 0, palette.door, 'south');
+  return { name: 'farmhouse', width, depth, blocks, floorY: 1 };
+}
+
 export const BLUEPRINTS: Record<string, () => Blueprint> = {
+  farmhouse: () => farmhouse(),
   cottage: () => cottage(),
   house: () => house(),
   hut: () => house(4, 4, 2, 'hut'),
 };
 
+// for counting items in the inventory
 const matches = (material: Material) => (name: string) =>
   material === 'planks' ? isPlanks(name) : material === 'log' ? isLog(name) : name === material;
+
+// for checking blocks already in the world (a torch item becomes a wall_torch block)
+const isPlaced = (material: Material, blockName: string) =>
+  material === 'planks' || material === 'log' ? matches(material)(blockName) : blockNames(material).includes(blockName);
+
+// furniture, torches and the door go in after the house itself, the door last of all:
+// the gap it fills is the way in and out
+function phase(material: Material) {
+  if (material.endsWith('_door')) return 2;
+  if (/torch|chest|furnace|crafting_table/.test(material)) return 1;
+  return 0;
+}
 
 /** How many of each material these blocks take. */
 export function materialsNeeded(blocks: BlueprintBlock[]) {
@@ -133,7 +253,7 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3) {
   const corner = origin?.floored() ?? findSpot(ctx, blueprint);
   const todo = blueprint.blocks
     .map((block) => ({ ...block, pos: corner.plus(block.at) }))
-    .filter((block) => !matches(block.material)(bot.blockAt(block.pos)?.name ?? ''));
+    .filter((block) => !isPlaced(block.material, bot.blockAt(block.pos)?.name ?? ''));
 
   const missing = [...materialsNeeded(todo)]
     .map(([material, count]) => ({ material, lack: count - countItem(bot, matches(material)) }))
@@ -160,15 +280,15 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3) {
 /**
  * Which block to place next: one on the lowest layer left that already has a neighbour
  * to go against, the closest to the bot first so it doesn't keep walking around the
- * house. Doors wait until everything else is done (the gap is the way in and out).
+ * house. Furniture, torches and the door come after the rest (see phase).
  */
 function nextBlock(ctx: SkillContext, todo: (BlueprintBlock & { pos: Vec3 })[]) {
   const here = ctx.bot.entity.position;
-  const others = todo.some((block) => block.material !== 'oak_door');
+  const current = Math.min(...todo.map((block) => phase(block.material)));
   let best = -1;
   let bestScore = Infinity;
   todo.forEach((block, i) => {
-    if (others && block.material === 'oak_door') return;
+    if (phase(block.material) !== current) return;
     if (!hasSupport(ctx, block.pos)) return;
     // a layer costs more than any walk, so it still builds bottom up
     const score = block.pos.y * 1000 + block.pos.distanceTo(here);
@@ -220,7 +340,7 @@ function isBuildable(ctx: SkillContext, corner: Vec3, blueprint: Blueprint) {
     for (let z = -1; z <= blueprint.depth; z++) {
       const inside = x >= 0 && z >= 0 && x < blueprint.width && z < blueprint.depth;
       if (inside && ctx.bot.blockAt(corner.offset(x, -1, z))?.boundingBox !== 'block') return false;
-      for (let y = 0; y < 7; y++) {
+      for (let y = 0; y < 9; y++) {
         if (ctx.bot.blockAt(corner.offset(x, y, z))?.boundingBox !== 'empty') return false;
       }
     }
@@ -237,9 +357,12 @@ async function standFor(ctx: SkillContext, pos: Vec3, corner: Vec3, blueprint: B
   const { bot } = ctx;
   const here = bot.entity.position;
   const insideNow = contains(corner, blueprint, here.floored());
-  if (canReach(here, pos) && !inTheWay(here, pos) && (!insideNow || pos.y - corner.y >= 3)) return;
+  const roofLevel = pos.y - corner.y >= (blueprint.floorY ?? 0) + 3;
+  if (canReach(here, pos) && !inTheWay(here, pos) && (!insideNow || roofLevel)) return;
 
-  const spots = [outsideSpot(pos, corner, blueprint), ...insideSpots(pos, corner, blueprint)];
+  const free = (s: Vec3) =>
+    bot.blockAt(s)?.boundingBox === 'empty' && bot.blockAt(s.offset(0, 1, 0))?.boundingBox === 'empty';
+  const spots = [outsideSpot(pos, corner, blueprint), ...insideSpots(pos, corner, blueprint)].filter(free);
   const spot = spots.find((s) => canReach(s.offset(0.5, 0, 0.5), pos) && !inTheWay(s.offset(0.5, 0, 0.5), pos));
   if (!spot) throw new SkillError(`I can't find a place to stand to reach ${pos.x} ${pos.y} ${pos.z}.`);
   if (here.floored().equals(spot)) return;
@@ -256,7 +379,7 @@ function inTheWay(feet: Vec3, pos: Vec3) {
 function insideSpots(pos: Vec3, corner: Vec3, blueprint: Blueprint) {
   const spots: Vec3[] = [];
   for (let x = 1; x < blueprint.width - 1; x++) {
-    for (let z = 1; z < blueprint.depth - 1; z++) spots.push(corner.offset(x, 0, z));
+    for (let z = 1; z < blueprint.depth - 1; z++) spots.push(corner.offset(x, blueprint.floorY ?? 0, z));
   }
   const flat = (s: Vec3) => Math.hypot(s.x - pos.x, s.z - pos.z);
   return spots.sort((a, b) => flat(a) - flat(b));
