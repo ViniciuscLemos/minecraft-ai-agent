@@ -29,9 +29,7 @@ export function startViewer(bot: Bot, { port = 3007, viewDistance = 6 }: ViewerO
     'if(e.name.includes("air"))return[];',
     'if(/(^|_)air$/.test(e.name))return[];',
   );
-  app.get('/worker.js', (_req: unknown, res: { type(t: string): { send(body: string): void } }) => res.type('js').send(worker));
-  setupRoutes(app, '');
-
+  // before setupRoutes: its compression() would hold the events back until the end
   // the bot's log as server-sent events, for the panel and the video overlay
   const feeds = new Set<{ write(chunk: string): void }>();
   (bot as unknown as NodeJS.EventEmitter).on('agent_log', (line: string) => {
@@ -42,9 +40,13 @@ export function startViewer(bot: Bot, { port = 3007, viewDistance = 6 }: ViewerO
     write(chunk: string): void;
   }) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.write(': connected\n\n');
     feeds.add(res);
     req.on('close', () => feeds.delete(res));
   });
+
+  app.get('/worker.js', (_req: unknown, res: { type(t: string): { send(body: string): void } }) => res.type('js').send(worker));
+  setupRoutes(app, '');
 
   const http = require('node:http').createServer(app) as Server;
   const io = new SocketServer(http, { path: '/socket.io' });
