@@ -1,0 +1,6 @@
+node_modules/
+.env
+# the local Minecraft server (jar, world, logs). scripts/setup-server.ts recreates it
+.server/
+*.log
+coverage/
