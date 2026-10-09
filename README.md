@@ -2,12 +2,17 @@
 
 [![CI](https://github.com/ViniciuscLemos/minecraft-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniciuscLemos/minecraft-ai-agent/actions/workflows/ci.yml)
 
+![The bot building a farmhouse on its own](docs/demo.gif)
+
+*The bot building a farmhouse by itself: 209 blocks in about 90 seconds, sped up. Recorded with `npm run demo`.*
+
 An AI agent that plays Minecraft with you on your own server. The goal: you type something like
 *"get some wood, make tools and build a small house next to me"* and it plans the steps and does them.
 
 It's being built in stages. Right now the bot follows you, obeys chat commands and has tested skills:
 it chops trees, crafts (tables, tools, glass panes...), mines, smelts in a furnace it makes itself and
-builds a small house from a blueprint. The AI part (Claude planning and replanning) comes on top of that.
+builds houses from blueprints (the farmhouse above: foundation, log frame, windows, a stair roof,
+a chimney, torches and furniture). The AI part (Claude planning and replanning) comes on top of that.
 
 ## Why I built it
 
@@ -65,7 +70,7 @@ Then open Minecraft 1.21.1, join `localhost` and type in the chat:
 | `!wood <n>` | chops trees for n logs |
 | `!craft <item> [n]` | crafts something, making the table, planks and sticks it needs on the way |
 | `!mine <block> [n]` | mines blocks it can see, and says which tool is missing if it can't |
-| `!build <cottage\|house\|hut>` | builds next to it, and lists the missing materials if it can't |
+| `!build <farmhouse\|cottage\|house\|hut>` | builds next to it, and lists the missing materials if it can't |
 
 Settings like the bot name and who can give it orders go in `.env` (see `.env.example`).
 
@@ -82,7 +87,7 @@ world: where it ends up, what's in its inventory, which blocks it placed. They r
 ## Demo video
 
 ```bash
-npm run demo              # the bot builds a cottage while a camera circles around it
+npm run demo              # the bot builds the farmhouse while a camera circles around it
 ```
 
 It runs a server in a throwaway world, opens a 3D view of it ([prismarine-viewer](https://github.com/PrismarineJS/prismarine-viewer))
@@ -98,6 +103,11 @@ in Edge with Playwright and records it, plus a timelapse GIF made from screensho
   right result before taking it.
 - **Logs that never reached the inventory.** The four logs of a trunk drop together right under the rest of the
   tree, where the bot doesn't fit, so it picks items up from a block away instead of walking onto them.
+- **Stairs that were never drawn.** The 3D viewer skips every block whose name contains "air", to leave out
+  `air` and `cave_air`... and `oak_stairs` has "air" in it. The roof was invisible until the viewer server
+  started serving a copy of its worker with that check fixed.
+- **A dandelion in the way.** Flowers have no hitbox, but the server won't place a block over them, so the bot
+  breaks plants before placing.
 - **An accent in the user folder.** On Windows, Java opens a Unix socket in the temp folder when it starts
   the network code. With a path like `C:\Users\Usuário` that fails with `Invalid argument: connect` and the
   server crashes. The fix is to point that socket to a folder without accents.

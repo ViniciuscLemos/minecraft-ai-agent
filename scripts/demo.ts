@@ -1,4 +1,4 @@
-// Records the demo video: the bot builds a cottage while a camera circles around it.
+// Records the demo video: the bot builds a farmhouse while a camera circles around it.
 //
 //   npm run demo          writes docs/demo.webm, docs/demo.gif (a timelapse) and docs/screenshot.png
 //
@@ -20,8 +20,15 @@ const PORT = 25620;
 const VIEWER_PORT = 3007;
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT = path.join(ROOT, 'docs');
-const CORNER = { x: -3, y: 1, z: 0 }; // where the cottage goes (7 x 5)
-const CENTER = { x: CORNER.x + 3.5, y: CORNER.y + 2.5, z: CORNER.z + 2.5 };
+const CORNER = { x: -4, y: 1, z: 0 }; // where the farmhouse goes (9 x 5)
+const CENTER = { x: CORNER.x + 4.5, y: CORNER.y + 3, z: CORNER.z + 2.5 };
+
+// what the farmhouse takes (see materialsNeeded in src/skills/build.ts)
+const MATERIALS: [string, number][] = [
+  ['cobblestone', 31], ['oak_planks', 21], ['spruce_stairs', 64], ['spruce_stairs', 3], ['birch_planks', 32],
+  ['oak_log', 31], ['glass_pane', 10], ['spruce_planks', 10], ['torch', 3], ['crafting_table', 1],
+  ['furnace', 1], ['chest', 1], ['spruce_door', 1],
+];
 
 // same server, different world: ground at y = 0 instead of y = -61
 function prepareFolder() {
@@ -77,7 +84,7 @@ function pageSetup({ center }: { center: { x: number; y: number; z: number } }) 
     const panel = document.createElement('div');
     panel.innerHTML = `
       <div style="font:600 22px/1.2 system-ui;margin-bottom:4px">minecraft-ai-agent</div>
-      <div style="font:14px system-ui;opacity:.8;margin-bottom:10px">a bot building a cottage on its own: no human controls</div>
+      <div style="font:14px system-ui;opacity:.8;margin-bottom:10px">a bot building a farmhouse on its own, block by block: no human controls</div>
       <div id="log" style="font:13px/1.45 ui-monospace,Consolas,monospace"></div>`;
     Object.assign(panel.style, {
       position: 'fixed', left: '20px', top: '20px', width: '400px', padding: '16px 18px', color: '#fff',
@@ -110,13 +117,12 @@ async function main() {
     // far enough out that they never get between the camera and the house
     const trees = [[-24, -10], [-26, 6], [-18, 20], [22, -14], [26, 2], [20, 19], [3, -25], [-6, 27], [-21, -22], [14, 26]];
     for (const [x, z] of trees) server.command(`place feature minecraft:oak ${x} 1 ${z}`);
-    for (const [x, z] of [[-9, -3], [9, 9], [-7, 10], [7, -9], [12, -2], [-12, 4]]) {
+    // flower patches spread several blocks, so they start well away from the house
+    for (const [x, z] of [[-16, -6], [17, 9], [-12, 16], [10, -15], [18, -4], [-18, 8]]) {
       server.command(`place feature minecraft:flower_plain ${x} 1 ${z}`);
     }
-    for (const [item, count] of [['oak_log', 32], ['oak_planks', 64], ['oak_stairs', 64], ['glass_pane', 6], ['oak_door', 1]] as const) {
-      server.command(`give Steve_AI minecraft:${item} ${count}`);
-    }
-    await waitFor(() => bot.inventory.items().length >= 5, 'the materials', 20_000);
+    for (const [item, count] of MATERIALS) server.command(`give Steve_AI minecraft:${item} ${count}`);
+    await waitFor(() => bot.inventory.items().length >= 12, 'the materials', 20_000);
 
     await startViewer(bot, { port: VIEWER_PORT, viewDistance: 5 });
     const browser = await chromium.launch({ channel: process.env.DEMO_BROWSER ?? 'msedge' });
@@ -141,7 +147,7 @@ async function main() {
     })();
 
     const started = Date.now();
-    const result = await runSkill(bot, 'build', { structure: 'cottage', ...CORNER });
+    const result = await runSkill(bot, 'build', { structure: 'farmhouse', ...CORNER });
     console.log(`${result} (${Math.round((Date.now() - started) / 1000)}s)`);
     bot.chat('Done! Come take a look.');
     await sleep(8000);
