@@ -22,6 +22,15 @@ export const SERVER_PROPERTIES: Record<string, string> = {
   'server-ip': '127.0.0.1',
   'server-port': '25565',
   'level-type': 'minecraft\\:flat',
+  // the classic flat preset; left empty, 1.21 logs "No key layers" and the world has no ground
+  'generator-settings': JSON.stringify({
+    layers: [
+      { block: 'minecraft:bedrock', height: 1 },
+      { block: 'minecraft:dirt', height: 2 },
+      { block: 'minecraft:grass_block', height: 1 },
+    ],
+    biome: 'minecraft:plains',
+  }),
   'level-name': 'world',
   difficulty: 'peaceful',
   gamemode: 'survival',
