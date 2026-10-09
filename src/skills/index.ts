@@ -6,6 +6,7 @@ import type { SkillContext } from './context.ts';
 import { craft } from './craft.ts';
 import { mine } from './mine.ts';
 import { placeNear } from './place.ts';
+import { smelt } from './smelt.ts';
 import { collectWood } from './wood.ts';
 
 export { SkillError, type SkillContext } from './context.ts';
@@ -54,6 +55,17 @@ export const SKILLS: Skill[] = [
     run: (ctx, args) => mine(ctx, String(args.block), amount(args)),
   },
   {
+    name: 'smelt',
+    description:
+      'Smelt items in a furnace (sand into glass, cobblestone into stone, raw iron into ingots). Finds or places a furnace and burns coal, logs or planks.',
+    input: {
+      type: 'object',
+      properties: { item: { type: 'string' }, amount: { type: 'integer', minimum: 1, maximum: 64 } },
+      required: ['item', 'amount'],
+    },
+    run: (ctx, args) => smelt(ctx, String(args.item), amount(args)),
+  },
+  {
     name: 'place',
     description: 'Put one block from the inventory on the ground next to it.',
     input: { type: 'object', properties: { item: { type: 'string' } }, required: ['item'] },
@@ -64,7 +76,7 @@ export const SKILLS: Skill[] = [
   },
   {
     name: 'build',
-    description: `Build a structure from planks next to it, or at x y z when given. Known: ${Object.keys(BLUEPRINTS).join(', ')}.`,
+    description: `Build a structure next to it, or at x y z when given. Known: ${Object.keys(BLUEPRINTS).join(', ')}. It says which materials are missing if it can't.`,
     input: {
       type: 'object',
       properties: {

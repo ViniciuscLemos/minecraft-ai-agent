@@ -62,7 +62,7 @@ describe('skills', () => {
 
   it('explains what is missing to build a house', async () => {
     const result = await runSkill(agent, 'build', { structure: 'hut' });
-    expect(result).toMatch(/^A hut takes \d+ planks and I have \d+\. I need \d+ more\.$/);
+    expect(result).toMatch(/^To build a hut I need \d+ more planks\.$/);
   });
 
   it('builds a small house from planks', async () => {
@@ -72,9 +72,20 @@ describe('skills', () => {
     const result = await runSkill(agent, 'build', { structure: 'hut', x: -8, y: -60, z: 4 });
     expect(result).toBe('Built a hut at -8 -60 4.');
     const corner = new Vec3(-8, -60, 4);
-    const misplaced = house(4, 4, 2).blocks.filter((offset) => agent.blockAt(corner.plus(offset))?.name !== 'oak_planks');
+    const misplaced = house(4, 4, 2).blocks.filter((block) => agent.blockAt(corner.plus(block.at))?.name !== 'oak_planks');
     expect(misplaced).toEqual([]);
   }, 120_000);
+
+  it('makes glass in a furnace it crafts and places itself, then glass panes', async () => {
+    server.command(`give ${BOT} minecraft:cobblestone 8`);
+    server.command(`give ${BOT} minecraft:sand 6`);
+    await waitFor(() => countItem(agent, (name) => name === 'sand') >= 6, 'the sand to arrive');
+
+    const result = await runSkill(agent, 'smelt', { item: 'sand', amount: 6 });
+    expect(result).toMatch(/^Smelted 6 sand into glass/);
+    expect(countItem(agent, (name) => name === 'glass')).toBe(6);
+    expect(await runSkill(agent, 'craft', { item: 'glass_pane', amount: 16 })).toMatch(/^Crafted 16 glass_pane/);
+  }, 150_000);
 
   it('drops what it is doing on !stop', async () => {
     server.command('place feature minecraft:oak 30 -60 30');
