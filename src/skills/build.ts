@@ -264,6 +264,8 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3) {
   }
 
   ctx.log(`building a ${blueprint.name} at ${corner} (${todo.length} blocks)`);
+  const total = todo.length;
+  let placed = 0;
   while (todo.length) {
     checkAborted(ctx);
     const index = nextBlock(ctx, todo);
@@ -273,6 +275,8 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3) {
     const item = bot.inventory.items().find((it) => matches(block!.material)(it.name));
     if (!item) throw new SkillError(`I ran out of ${block!.material} halfway through.`);
     await placeAt(ctx, item.name, block!.pos, block!.facing);
+    placed++;
+    if (placed % 15 === 0 || todo.length === 0) ctx.log(`placed ${placed} of ${total} blocks`);
   }
   return `Built a ${blueprint.name} at ${corner.x} ${corner.y} ${corner.z}.`;
 }

@@ -25,7 +25,7 @@ export const HELP = [
   '!craft <item> [n] - craft something, like !craft wooden_pickaxe',
   '!mine <block> [n] - mine blocks it can see, like !mine stone 3',
   '!place <item> - put a block down next to it',
-  '!build <cottage|house|hut> - build next to it',
+  '!build <farmhouse|cottage|house|hut> - build next to it',
 ];
 
 const ALIASES: Record<string, Command['name']> = {
@@ -48,7 +48,7 @@ const SKILL_COMMANDS: Record<string, (args: string[]) => ParseResult> = {
   craft: ([item, n = '1']) => skillWith('craft', { item, amount: Number(n) }, !!item && isCount(n), 'Use !craft <item> [how many]'),
   mine: ([block, n = '1']) => skillWith('mine', { block, amount: Number(n) }, !!block && isCount(n), 'Use !mine <block> [how many]'),
   place: ([item]) => skillWith('place', { item }, !!item, 'Use !place <item>'),
-  build: ([structure]) => skillWith('build', { structure }, !!structure, 'Use !build <cottage|house|hut>'),
+  build: ([structure]) => skillWith('build', { structure }, !!structure, 'Use !build <farmhouse|cottage|house|hut>'),
 };
 
 const isCount = (text: string) => /^\d+$/.test(text) && Number(text) >= 1 && Number(text) <= 64;
