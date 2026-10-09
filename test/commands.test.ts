@@ -27,6 +27,28 @@ describe('parseCommand', () => {
   });
 });
 
+describe('skill commands', () => {
+  it('turn the words after the command into skill arguments', () => {
+    expect(parseCommand('!wood 6')).toEqual({ ok: true, command: { name: 'skill', skill: 'collect_wood', args: { amount: 6 } } });
+    expect(parseCommand('!craft wooden_pickaxe')).toEqual({
+      ok: true,
+      command: { name: 'skill', skill: 'craft', args: { item: 'wooden_pickaxe', amount: 1 } },
+    });
+    expect(parseCommand('!mine stone 3')).toMatchObject({ command: { skill: 'mine', args: { block: 'stone', amount: 3 } } });
+    expect(parseCommand('!BUILD house')).toMatchObject({ command: { skill: 'build', args: { structure: 'house' } } });
+  });
+
+  it('have sensible defaults', () => {
+    expect(parseCommand('!chop')).toMatchObject({ command: { skill: 'collect_wood', args: { amount: 4 } } });
+  });
+
+  it('say how to use them when the arguments are wrong', () => {
+    expect(parseCommand('!craft')).toEqual({ ok: false, error: 'Use !craft <item> [how many]' });
+    expect(parseCommand('!wood lots')).toEqual({ ok: false, error: 'Use !wood <how many logs>' });
+    expect(parseCommand('!mine stone 999')).toEqual({ ok: false, error: 'Use !mine <block> [how many]' });
+  });
+});
+
 describe('canCommand', () => {
   it('anyone when there is no owner list', () => {
     expect(canCommand('Someone', [])).toBe(true);

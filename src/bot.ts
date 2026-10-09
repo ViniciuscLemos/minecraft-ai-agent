@@ -1,10 +1,12 @@
-// Stage 1: the bot joins, follows people and obeys chat commands.
-// The movement uses mineflayer-pathfinder with safe settings: no long falls, no digging
+// The bot itself: joins the server, obeys chat commands and runs skills, with the
+// reflexes always on underneath. The movement uses mineflayer-pathfinder with safe settings: no long falls, no digging
 // through the floor and no walking into lava or water when there's another way.
 import mineflayer, { type Bot } from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
 import { canCommand, HELP, parseCommand, type Command } from './commands.ts';
 import type { Config } from './config.ts';
+import { addReflexes } from './reflexes.ts';
+import { findSkill, SkillError } from './skills/index.ts';
 
 const { pathfinder, Movements, goals } = pathfinderPkg;
 
@@ -27,7 +29,7 @@ export function createAgentBot(config: Config): Bot {
     const movements = new Movements(bot);
     movements.maxDropDown = 3; // falls of more than 3 blocks hurt
     movements.allowParkour = false; // jumping over gaps is where bots fall in holes
-    movements.canDig = false; // in stage 1 it only walks, it doesn't break anything
+    movements.canDig = false; // it breaks blocks on purpose (skills), never to make a path
     bot.pathfinder.setMovements(movements);
     log(bot, `joined at ${position(bot)}`);
     bot.chat('Hi! Type !help to see what I can do.');
@@ -42,6 +44,8 @@ export function createAgentBot(config: Config): Bot {
     run(bot, parsed.command, player);
   });
 
+  addReflexes(bot, (text) => log(bot, text), () => cancelTask(bot));
+
   bot.on('goal_reached', () => log(bot, `arrived at ${position(bot)}`));
   bot.on('path_update', (result) => {
     if (result.status === 'noPath') bot.chat("I can't find a way there.");
@@ -52,8 +56,45 @@ export function createAgentBot(config: Config): Bot {
   return bot;
 }
 
+// the skill running right now, so a new order or !stop can cancel it
+const tasks = new WeakMap<Bot, AbortController>();
+
+export function cancelTask(bot: Bot) {
+  tasks.get(bot)?.abort();
+  tasks.delete(bot);
+}
+
+/** Runs a skill and reports back in the chat. Resolves with the message it said. */
+export async function runSkill(bot: Bot, name: string, args: Record<string, unknown>): Promise<string> {
+  const skill = findSkill(name);
+  if (!skill) return say(bot, `I don't have a skill called ${name}.`);
+
+  cancelTask(bot);
+  const controller = new AbortController();
+  tasks.set(bot, controller);
+  log(bot, `skill ${name} ${JSON.stringify(args)}`);
+  try {
+    const result = await skill.run({ bot, signal: controller.signal, log: (text) => log(bot, text) }, args);
+    return controller.signal.aborted ? 'Stopped.' : say(bot, result);
+  } catch (error) {
+    if (controller.signal.aborted) return 'Stopped.';
+    if (error instanceof SkillError) return say(bot, error.message);
+    log(bot, `skill ${name} crashed: ${(error as Error).stack}`);
+    return say(bot, `Something went wrong: ${(error as Error).message}`);
+  } finally {
+    if (tasks.get(bot) === controller) tasks.delete(bot);
+  }
+}
+
+function say(bot: Bot, message: string) {
+  bot.chat(message);
+  return message;
+}
+
 export function run(bot: Bot, command: Command, player: string) {
   const target = bot.players[player]?.entity;
+  // any new order replaces the one it was working on
+  if (command.name !== 'where' && command.name !== 'inventory' && command.name !== 'help') cancelTask(bot);
 
   switch (command.name) {
     case 'help':
@@ -91,6 +132,11 @@ export function run(bot: Bot, command: Command, player: string) {
       const items = bot.inventory.items().map((item) => `${item.count} ${item.name}`);
       return bot.chat(items.length ? `I have: ${items.join(', ')}` : 'My inventory is empty.');
     }
+
+    case 'skill':
+      bot.chat('On it.');
+      void runSkill(bot, command.skill, command.args);
+      return;
   }
 }
 
