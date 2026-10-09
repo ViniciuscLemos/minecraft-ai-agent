@@ -2,6 +2,7 @@
 // what it's doing. prismarine-viewer's own server helper also loads its renderer, which
 // needs the native `canvas` package, so this sets up the same thing with only the parts
 // a server needs.
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { Server } from 'node:http';
 import type { Bot } from 'mineflayer';
@@ -20,6 +21,15 @@ export function startViewer(bot: Bot, { port = 3007, viewDistance = 6 }: ViewerO
   const { WorldView } = require('prismarine-viewer/viewer/lib/worldView');
 
   const app = express();
+  // prismarine-viewer skips every block whose name contains "air" (meant for air,
+  // cave_air...), and that includes st-air-s: no stairs were ever drawn. The page
+  // gets a copy of the meshing worker with that check fixed.
+  const workerFile = require.resolve('prismarine-viewer/public/worker.js');
+  const worker = readFileSync(workerFile, 'utf8').replace(
+    'if(e.name.includes("air"))return[];',
+    'if(/(^|_)air$/.test(e.name))return[];',
+  );
+  app.get('/worker.js', (_req: unknown, res: { type(t: string): { send(body: string): void } }) => res.type('js').send(worker));
   setupRoutes(app, '');
 
   // the bot's log as server-sent events, for the panel and the video overlay
