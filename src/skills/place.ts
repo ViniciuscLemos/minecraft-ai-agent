@@ -71,6 +71,12 @@ export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3, fa
   const reference = bot.blockAt(pos.plus(face))!;
 
   if (!canReach(bot.entity.position, pos)) await goNear(ctx, pos, 3);
+  // flowers, grass and the like have no hitbox but the server won't place over most of
+  // them (a dandelion isn't replaceable), so they get broken first
+  const plant = bot.blockAt(pos);
+  if (plant && plant.boundingBox === 'empty' && !/(^|_)air$/.test(plant.name) && !/water|lava/.test(plant.name)) {
+    await bot.dig(plant, true);
+  }
   for (let attempt = 1; ; attempt++) {
     // looked up again on every try: the stack in hand may have run out in the meantime
     const stack = bot.inventory.items().find((it) => it.name === itemName);
