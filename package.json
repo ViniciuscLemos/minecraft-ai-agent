@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:scenario": "vitest run --config vitest.scenario.config.ts",
-    "demo": "node scripts/demo.ts"
+    "demo": "node scripts/demo.ts",
+    "survival": "node scripts/survival.ts"
   },
   "license": "MIT",
   "type": "module",

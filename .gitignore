@@ -9,3 +9,4 @@ coverage/
 .scout-server/
 # the demo video is big; it goes to the release/LinkedIn, the GIF goes in the repo
 docs/*.webm
+.survival-server/
