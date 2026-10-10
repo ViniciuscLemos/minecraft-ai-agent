@@ -4,11 +4,16 @@ import pathfinderPkg from 'mineflayer-pathfinder';
 import type { Vec3 } from 'vec3';
 import { checkAborted, countItem, pickUpDrops, SkillError, walk, type SkillContext } from './context.ts';
 import { canReach } from './place.ts';
+import { stepDown } from './stairs.ts';
 import { equipBestTool, harvestToolNames } from './tools.ts';
 
 const { goals } = pathfinderPkg;
 
 const SEARCH_RADIUS = 40;
+// how deep it digs a staircase looking for buried stone before giving up
+const MAX_STAIR_STEPS = 24;
+// exposed blocks further than this aren't worth the walk, it digs down instead
+const WALK_FOR_STONE = 16;
 
 export async function mine(ctx: SkillContext, blockName: string, amount: number) {
   const { bot } = ctx;
@@ -29,21 +34,57 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
   // ones it can't walk to (it never digs a path), so only exposed blocks count. The scan
   // result is kept and only redone when it runs out, since it touches thousands of blocks.
   let targets: Vec3[] = [];
-  const usable = (p: Vec3) => !skipped.has(p.toString()) && bot.blockAt(p)?.type === type.id && isExposed(bot, p);
+  // once it has given up on walking to far stone, it only takes what it can reach from
+  // its own stairs
+  let stairsOnly = false;
+  const usable = (p: Vec3) =>
+    !skipped.has(p.toString()) &&
+    bot.blockAt(p)?.type === type.id &&
+    isExposed(bot, p) &&
+    dropStays(bot, p) &&
+    // on the stairs only the walls right next to it: anything further leaves the drop in a
+    // hole or a pocket one block high, where it doesn't fit
+    (!stairsOnly || touchesBot(bot.entity.position, p));
   const nextTarget = () => {
     targets = targets.filter(usable);
     if (!targets.length) {
-      targets = exposedBlocks(bot, type.id, (p) => !skipped.has(p.toString()));
+      targets = exposedBlocks(bot, type.id, usable, stairsOnly ? 2 : SEARCH_RADIUS);
     }
-    return targets.sort((a, b) => a.distanceTo(bot.entity.position) - b.distanceTo(bot.entity.position))[0];
+    const nearest = targets.sort((a, b) => a.distanceTo(bot.entity.position) - b.distanceTo(bot.entity.position))[0];
+    // far-off exposed stone is usually a cliff or the bottom of a pit; stairs dug right here
+    // get to stone in a few steps and the bot stays near its stuff
+    if (nearest && !stairsOnly && nearest.distanceTo(bot.entity.position) > WALK_FOR_STONE) {
+      stairsOnly = true;
+      return nextTarget();
+    }
+    return nearest;
   };
 
+  // a staircase can dig into the stone too, so the tool check can't wait for a target
+  const neededTools = harvestToolNames(bot, { harvestTools: type.harvestTools } as never);
+  if (neededTools && !bot.inventory.items().some((item) => neededTools.includes(item.name))) {
+    throw new SkillError(`I need a ${neededTools[0]} (or better) to mine ${type.name}.`);
+  }
+
+  let stairSteps = 0;
+  let failedWalks = 0;
+  let stairDir: Vec3 | undefined;
   while (mined() < amount) {
     checkAborted(ctx);
     if (broken > amount * 3) throw new SkillError(`I broke ${broken} ${type.name} but only got ${mined()} ${dropName}.`);
     const pos = nextTarget();
     if (!pos) {
-      if (mined() === 0) throw new SkillError(`I can't see any ${type.name} within ${SEARCH_RADIUS} blocks.`);
+      // nothing exposed nearby: stone is almost always a few blocks under the grass, so dig
+      // down to it like a player would. The walls of the stairs become exposed stone.
+      if (stairSteps < MAX_STAIR_STEPS) {
+        if (stairSteps === 0) ctx.log(`no ${type.name} in sight, digging stairs down to find some`);
+        const before = carried();
+        stairDir = await stepDown(ctx, stairDir);
+        stairSteps++;
+        broken += Math.max(0, carried() - before);
+        continue;
+      }
+      if (mined() === 0) throw new SkillError(`I can't find any ${type.name} within ${SEARCH_RADIUS} blocks or ${MAX_STAIR_STEPS} steps down.`);
       throw new SkillError(`I only found ${mined()} of the ${amount} ${type.name} nearby.`);
     }
     const block = bot.blockAt(pos)!;
@@ -54,18 +95,29 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
       throw new SkillError(`I need a ${tools[0]} (or better) to mine ${type.name}.`);
     }
 
+    // stone at the bottom of a pit or up a cliff tends to come in big patches it can't get
+    // to; trying them one by one took the whole morning, digging down is quicker
+    const giveUpOn = (pos: Vec3) => {
+      skipped.add(pos.toString());
+      if (++failedWalks >= 3 && !stairsOnly) {
+        stairsOnly = true;
+        targets = [];
+        ctx.log(`can't get to the ${type.name} I see, digging my own way down instead`);
+      }
+    };
     try {
       await walk(ctx, new goals.GoalLookAtBlock(pos, bot.world), `the ${type.name}`);
     } catch (error) {
       if (!(error instanceof SkillError) || ctx.signal.aborted) throw error;
-      skipped.add(pos.toString());
+      giveUpOn(pos);
       continue;
     }
     // the pathfinder can call a goal reached from far away (a cave right under its feet
     // counts as "looking at" it); a dig from there only breaks the block on our side and
     // the server puts it back
-    if (!canReach(bot.entity.position, pos)) {
-      skipped.add(pos.toString());
+    // and a block deeper than the step below its feet drops into a hole it can't climb into
+    if (!canReach(bot.entity.position, pos) || pos.y < Math.floor(bot.entity.position.y) - 1) {
+      giveUpOn(pos);
       continue;
     }
     await equipBestTool(bot, block);
@@ -107,10 +159,29 @@ const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -
 // you can't stand in these to mine, and the drop sinks or burns
 const LIQUIDS = new Set(['water', 'lava', 'bubble_column']);
 
-/** True when one of the six faces touches air (or grass, flowers...), so it can be reached on foot. */
+/** True when one of the six faces touches air (or grass, flowers...) and none touches a liquid, so it can be mined on foot. */
 export function isExposed(bot: Pick<Bot, 'blockAt'>, pos: Vec3) {
   return SIDES.some(([x, y, z]) => {
     const side = bot.blockAt(pos.offset(x, y, z));
     return !!side && side.boundingBox === 'empty' && !LIQUIDS.has(side.name);
-  });
+  }) && !touchesLiquid(bot, pos);
+}
+
+// breaking a block next to water or lava lets it pour in where the bot is standing
+function touchesLiquid(bot: Pick<Bot, 'blockAt'>, pos: Vec3) {
+  return SIDES.some(([x, y, z]) => LIQUIDS.has(bot.blockAt(pos.offset(x, y, z))?.name ?? ''));
+}
+
+/**
+ * Whether the drop stays where the block was. With a cave or a pit under it the item falls
+ * out of reach: on the first normal-world run every stone it broke went down a hole.
+ */
+export function dropStays(bot: Pick<Bot, 'blockAt'>, pos: Vec3) {
+  return bot.blockAt(pos.offset(0, -1, 0))?.boundingBox === 'block';
+}
+
+/** Whether the block is beside the two blocks a player at `feet` takes up (feet and head). */
+export function touchesBot(feet: Vec3, pos: Vec3) {
+  const { x, y, z } = feet.floored();
+  return (pos.y === y || pos.y === y + 1) && Math.abs(pos.x - x) + Math.abs(pos.z - z) === 1;
 }
