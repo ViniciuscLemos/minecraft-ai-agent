@@ -94,8 +94,11 @@ function pageSetup({ center }: { center: { x: number; y: number; z: number } }) 
     const log = panel.querySelector('#log')!;
     const events = new EventSource('/events');
     events.onmessage = (e) => {
+      const text: string = JSON.parse(e.data);
+      // every pathfinder stop logs one of these; in a video they bury the lines that matter
+      if (text.startsWith('arrived at')) return;
       const line = document.createElement('div');
-      line.textContent = '> ' + JSON.parse(e.data);
+      line.textContent = '> ' + text;
       log.appendChild(line);
       while (log.childNodes.length > 9) log.removeChild(log.firstChild!);
     };
