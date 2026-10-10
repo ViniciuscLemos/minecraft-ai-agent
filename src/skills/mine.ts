@@ -16,15 +16,15 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
 
   let mined = 0;
   const skipped = new Set<string>();
-  const cost = (pos: Vec3) => pos.distanceTo(bot.entity.position) + (isExposed(bot, pos) ? 0 : 100);
   while (mined < amount) {
     checkAborted(ctx);
+    // in a normal world almost all the stone is underground, so the nearest blocks are
+    // buried ones it can't walk to (it never digs a path). Only blocks with air next to
+    // them count; mining one opens the next, the way a player digs into a hillside.
     const pos = bot
-      .findBlocks({ matching: type.id, maxDistance: SEARCH_RADIUS, count: 32 })
-      .filter((p) => !skipped.has(p.toString()))
-      // in a normal world most stone is underground: a block with air next to it can be
-      // reached without digging, so those go first even when a buried one is closer
-      .sort((a, b) => cost(a) - cost(b))[0];
+      .findBlocks({ matching: type.id, maxDistance: SEARCH_RADIUS, count: 4096 })
+      .filter((p) => !skipped.has(p.toString()) && isExposed(bot, p))
+      .sort((a, b) => a.distanceTo(bot.entity.position) - b.distanceTo(bot.entity.position))[0];
     if (!pos) {
       if (mined === 0) throw new SkillError(`I can't see any ${type.name} within ${SEARCH_RADIUS} blocks.`);
       throw new SkillError(`I only found ${mined} of the ${amount} ${type.name} nearby.`);
@@ -48,6 +48,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
     await bot.dig(block, true);
     await pickUpDrops(ctx, pos);
     mined++;
+    if (mined % 8 === 0 && mined < amount) ctx.log(`mined ${mined}/${amount} ${type.name}`);
   }
 
   const drop = bot.registry.blocksByName[type.name]!.drops?.[0];
