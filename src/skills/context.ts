@@ -29,11 +29,22 @@ export function countItem(bot: Bot, match: (name: string) => boolean) {
 export const isLog = (name: string) => name.endsWith('_log') && !name.startsWith('stripped_');
 export const isPlanks = (name: string) => name.endsWith('_planks');
 
-/** Walks until the goal is reached, turning "no path" and !stop into SkillErrors. */
-export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Goal>, where: string) {
+/**
+ * Walks until the goal is reached, turning "no path" and !stop into SkillErrors. With a
+ * timeout it gives up after that long: the pathfinder can keep finding an empty "partial"
+ * path forever (an item in a one-block hole kept it busy for ten minutes).
+ */
+export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Goal>, where: string, timeoutMs?: number) {
   checkAborted(ctx);
   const onAbort = () => ctx.bot.pathfinder.stop();
   ctx.signal.addEventListener('abort', onAbort, { once: true });
+  let timedOut = false;
+  const timer = timeoutMs
+    ? setTimeout(() => {
+        timedOut = true;
+        ctx.bot.pathfinder.stop();
+      }, timeoutMs)
+    : undefined;
   try {
     for (let attempt = 1; ; attempt++) {
       // right after a teleport or a respawn the chunks around it are still arriving, and
@@ -44,6 +55,7 @@ export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Go
         return;
       } catch (error) {
         checkAborted(ctx);
+        if (timedOut) throw new SkillError(`It's taking too long to get to ${where}.`);
         const message = (error as Error).message ?? '';
         // "path was stopped" without our own abort: something else (an older task being
         // cancelled) stopped the pathfinder, so it's worth another try
@@ -53,6 +65,7 @@ export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Go
       }
     }
   } finally {
+    clearTimeout(timer);
     ctx.signal.removeEventListener('abort', onAbort);
   }
 }
@@ -84,7 +97,7 @@ export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
     // often under the rest of the trunk, where the bot doesn't fit
     const { x, y, z } = drop.position.floored();
     try {
-      await walk(ctx, new goals.GoalNear(x, y, z, 1), 'the item');
+      await walk(ctx, new goals.GoalNear(x, y, z, 1), 'the item', 15_000);
     } catch (error) {
       if (ctx.signal.aborted) throw error;
       // an item that fell somewhere unreachable isn't worth failing the whole skill
