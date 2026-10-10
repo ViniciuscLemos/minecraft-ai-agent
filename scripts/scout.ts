@@ -67,5 +67,8 @@ async function scout(seed: string) {
   }
 }
 
-for (const seed of process.argv.slice(2)) await scout(seed);
-process.exit(0);
+// only when run directly: the survival demo imports normalWorldFolder from here
+if (import.meta.main) {
+  for (const seed of process.argv.slice(2)) await scout(seed);
+  process.exit(0);
+}
