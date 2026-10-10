@@ -1,4 +1,5 @@
-// Chops trees until it has `amount` more logs.
+// Chops trees until it has `amount` more logs (of one wood when `type` is given, e.g.
+// birch_log for pale walls).
 import pathfinderPkg from 'mineflayer-pathfinder';
 import type { Block } from 'prismarine-block';
 import type { Vec3 } from 'vec3';
@@ -9,11 +10,14 @@ const { goals } = pathfinderPkg;
 
 const SEARCH_RADIUS = 48;
 
-export async function collectWood(ctx: SkillContext, amount: number) {
+export async function collectWood(ctx: SkillContext, amount: number, type?: string) {
   const { bot } = ctx;
-  const logs = bot.registry.blocksArray.filter((block) => isLog(block.name)).map((block) => block.id);
-  const start = countItem(bot, isLog);
-  const got = () => countItem(bot, isLog) - start;
+  if (type && !isLog(type)) throw new SkillError(`"${type}" is not a log. Try oak_log, birch_log, spruce_log...`);
+  const wanted = (name: string) => (type ? name === type : isLog(name));
+  const logs = bot.registry.blocksArray.filter((block) => wanted(block.name)).map((block) => block.id);
+  const start = countItem(bot, wanted);
+  const got = () => countItem(bot, wanted) - start;
+  const what = type ?? 'logs';
   // logs it couldn't reach (too high, behind water...), skipped on the next searches
   const skipped = new Set<string>();
   // chopped but not picked up yet: like a player, it cuts the whole trunk first and
@@ -33,8 +37,8 @@ export async function collectWood(ctx: SkillContext, amount: number) {
         await collect();
         continue;
       }
-      if (got() === 0) throw new SkillError(`There are no trees I can reach within ${SEARCH_RADIUS} blocks.`);
-      throw new SkillError(`I only found ${got()} of the ${amount} logs I needed nearby.`);
+      if (got() === 0) throw new SkillError(`There are no ${type ? type.replace('_log', ' trees') : 'trees'} I can reach within ${SEARCH_RADIUS} blocks.`);
+      throw new SkillError(`I only found ${got()} of the ${amount} ${what} I needed nearby.`);
     }
 
     try {
@@ -54,15 +58,15 @@ export async function collectWood(ctx: SkillContext, amount: number) {
     bot.pathfinder.setGoal(null);
     await sleep(300);
     chopped.push(block.position);
-    const trunkDone = !isLog(bot.blockAt(block.position.offset(0, 1, 0))?.name ?? '');
+    const trunkDone = !wanted(bot.blockAt(block.position.offset(0, 1, 0))?.name ?? '');
     if (trunkDone || got() + chopped.length >= amount) {
       await collect();
-      ctx.log(`chopped ${block.position}, ${got()}/${amount} logs`);
+      ctx.log(`chopped ${block.position}, ${got()}/${amount} ${what}`);
     }
   }
 
-  const total = countItem(bot, isLog);
-  return `Got ${total - start} logs (now I have ${total}).`;
+  const total = countItem(bot, wanted);
+  return `Got ${total - start} ${what} (now I have ${total}).`;
 }
 
 function nearestLog(ctx: SkillContext, logs: number[], skipped: Set<string>): Block | null {

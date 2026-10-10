@@ -29,9 +29,13 @@ const amount = (args: Args, fallback = 1) => {
 export const SKILLS: Skill[] = [
   {
     name: 'collect_wood',
-    description: 'Chop the nearest trees until it has this many more logs.',
-    input: { type: 'object', properties: { amount: { type: 'integer', minimum: 1, maximum: 64 } }, required: ['amount'] },
-    run: (ctx, args) => collectWood(ctx, amount(args)),
+    description: 'Chop the nearest trees until it has this many more logs. Give a type (oak_log, birch_log, spruce_log...) to cut only that wood.',
+    input: {
+      type: 'object',
+      properties: { amount: { type: 'integer', minimum: 1, maximum: 64 }, type: { type: 'string' } },
+      required: ['amount'],
+    },
+    run: (ctx, args) => collectWood(ctx, amount(args), typeof args.type === 'string' ? args.type : undefined),
   },
   {
     name: 'craft',
