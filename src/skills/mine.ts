@@ -1,5 +1,7 @@
 // Mining a block type it can see from the surface (stone, coal, dirt...).
+import type { Bot } from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
+import type { Vec3 } from 'vec3';
 import { checkAborted, countItem, pickUpDrops, SkillError, walk, type SkillContext } from './context.ts';
 import { equipBestTool, harvestToolNames } from './tools.ts';
 
@@ -14,12 +16,15 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
 
   let mined = 0;
   const skipped = new Set<string>();
+  const cost = (pos: Vec3) => pos.distanceTo(bot.entity.position) + (isExposed(bot, pos) ? 0 : 100);
   while (mined < amount) {
     checkAborted(ctx);
     const pos = bot
       .findBlocks({ matching: type.id, maxDistance: SEARCH_RADIUS, count: 32 })
       .filter((p) => !skipped.has(p.toString()))
-      .sort((a, b) => a.distanceTo(bot.entity.position) - b.distanceTo(bot.entity.position))[0];
+      // in a normal world most stone is underground: a block with air next to it can be
+      // reached without digging, so those go first even when a buried one is closer
+      .sort((a, b) => cost(a) - cost(b))[0];
     if (!pos) {
       if (mined === 0) throw new SkillError(`I can't see any ${type.name} within ${SEARCH_RADIUS} blocks.`);
       throw new SkillError(`I only found ${mined} of the ${amount} ${type.name} nearby.`);
@@ -49,4 +54,14 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
   const dropName = typeof drop === 'number' ? bot.registry.items[drop]?.name : undefined;
   const have = dropName ? ` (now I have ${countItem(bot, (n) => n === dropName)} ${dropName})` : '';
   return `Mined ${mined} ${type.name}${have}.`;
+}
+
+const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const;
+
+/** True when one of the six faces touches air (or water, or plants), so it can be seen and reached. */
+export function isExposed(bot: Pick<Bot, 'blockAt'>, pos: Vec3) {
+  return SIDES.some(([x, y, z]) => {
+    const side = bot.blockAt(pos.offset(x, y, z));
+    return !!side && side.boundingBox === 'empty';
+  });
 }
