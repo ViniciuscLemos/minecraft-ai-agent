@@ -214,8 +214,9 @@ export function farmhouse(palette: Palette = DEFAULT_PALETTE): Blueprint {
   return { name: 'farmhouse', width, depth, blocks, floorY: 1 };
 }
 
-export const BLUEPRINTS: Record<string, () => Blueprint> = {
-  farmhouse: () => farmhouse(),
+// the palette only changes the farmhouse; the small ones are made of whatever planks it has
+export const BLUEPRINTS: Record<string, (palette?: Palette) => Blueprint> = {
+  farmhouse: (palette) => farmhouse(palette),
   cottage: () => cottage(),
   house: () => house(),
   hut: () => house(4, 4, 2, 'hut'),
@@ -244,11 +245,11 @@ export function materialsNeeded(blocks: BlueprintBlock[]) {
   return needed;
 }
 
-export async function build(ctx: SkillContext, name: string, origin?: Vec3) {
+export async function build(ctx: SkillContext, name: string, origin?: Vec3, palette?: Palette) {
   const { bot } = ctx;
   const make = BLUEPRINTS[name.toLowerCase()];
   if (!make) throw new SkillError(`I don't know how to build a "${name}". I can build: ${Object.keys(BLUEPRINTS).join(', ')}.`);
-  const blueprint = make();
+  const blueprint = make(palette);
 
   const corner = origin?.floored() ?? findSpot(ctx, blueprint);
   const todo = blueprint.blocks
