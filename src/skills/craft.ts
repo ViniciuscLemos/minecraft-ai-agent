@@ -4,8 +4,8 @@ import type { Bot } from 'mineflayer';
 import type { Block } from 'prismarine-block';
 import type { Recipe } from 'prismarine-recipe';
 import { checkAborted, countItem, goNear, isLog, isPlanks, SkillError, type SkillContext } from './context.ts';
-import { craftOnce } from './grid.ts';
-import { placeNear } from './place.ts';
+import { craftOnce, TableError } from './grid.ts';
+import { canReach, placeNear } from './place.ts';
 
 const TABLE_RADIUS = 24;
 // pickaxe -> sticks -> planks is 3 levels; more than that means something is off
@@ -16,6 +16,8 @@ export async function craft(ctx: SkillContext, name: string, amount = 1, depth =
   const item = resolveItem(bot, name);
   const has = () => countItem(bot, (n) => n === item.name);
   const before = has();
+  // set when the table it found wouldn't open: the next round puts down a new one
+  let newTable = false;
 
   for (let round = 0; has() - before < amount; round++) {
     checkAborted(ctx);
@@ -26,7 +28,7 @@ export async function craft(ctx: SkillContext, name: string, amount = 1, depth =
     let table: Block | null = null;
     let recipe = bot.recipesFor(item.id, null, 1, null)[0];
     if (!recipe && needsTable(bot, item.id)) {
-      table = await getTable(ctx, depth);
+      table = await getTable(ctx, depth, newTable);
       recipe = bot.recipesFor(item.id, null, 1, table)[0];
     }
 
@@ -49,7 +51,15 @@ export async function craft(ctx: SkillContext, name: string, amount = 1, depth =
     for (let i = 0; i < times; i++) {
       if (!bot.recipesFor(item.id, null, 1, table).length) break;
       ctx.log(`crafting ${recipe.result.count} ${item.name}${table ? ' at the table' : ''}`);
-      await craftOnce(bot, recipe, table);
+      try {
+        await craftOnce(bot, recipe, table);
+      } catch (error) {
+        if (!(error instanceof TableError)) throw error;
+        if (newTable) throw new SkillError("I can't get the crafting table to open.");
+        ctx.log(`${error.message}, putting down a new one`);
+        newTable = true;
+        break;
+      }
     }
   }
 
@@ -129,10 +139,16 @@ function needsTable(bot: Bot, itemId: number) {
 }
 
 /** A crafting table to stand next to: one nearby, or one it places (crafting it if needed). */
-async function getTable(ctx: SkillContext, depth: number): Promise<Block> {
+async function getTable(ctx: SkillContext, depth: number, placeNew = false): Promise<Block> {
   const { bot } = ctx;
   const tableId = bot.registry.blocksByName.crafting_table!.id;
-  let table = bot.findBlock({ matching: tableId, maxDistance: TABLE_RADIUS });
+  let table = placeNew ? null : bot.findBlock({ matching: tableId, maxDistance: TABLE_RADIUS });
+  if (table) {
+    await goNear(ctx, table.position, 3);
+    // "near" can still be the wrong side of a wall, or up the stairs it just dug
+    if (canReach(bot.entity.position, table.position)) return table;
+    table = null;
+  }
 
   if (!table) {
     if (countItem(bot, (n) => n === 'crafting_table') === 0) await craft(ctx, 'crafting_table', 1, depth + 1);

@@ -42,11 +42,30 @@ export function gridCells(recipe: Recipe, width: number) {
   return cells;
 }
 
+// a right click the server ignores (table out of reach or behind a wall) never opens a
+// window; without a limit the survival run sat at "crafting a furnace" for 17 minutes
+const OPEN_TIMEOUT = 5000;
+
 async function openTable(bot: Bot, table: Block): Promise<Window> {
-  const opened = new Promise<Window>((resolve) => bot.once('windowOpen', resolve));
+  let onOpen: (window: Window) => void = () => {};
+  const opened = new Promise<Window>((resolve) => {
+    onOpen = resolve;
+    bot.once('windowOpen', onOpen);
+  });
   await bot.activateBlock(table);
-  return opened;
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TableError('the crafting table did not open')), OPEN_TIMEOUT);
+  });
+  try {
+    return await Promise.race([opened, timeout]);
+  } finally {
+    clearTimeout(timer);
+    bot.removeListener('windowOpen', onOpen);
+  }
 }
+
+export class TableError extends Error {}
 
 /** Picks up the stack with `id`, drops one item into `slot`, and puts the rest back. */
 async function placeOne(bot: Bot, window: Window, id: number, slot: number) {
