@@ -1,6 +1,7 @@
 // Every skill in one list: the chat commands use it now, and the AI planner will get the
 // same list as its tools, so both go through the exact same tested code.
 import { Vec3 } from 'vec3';
+import { paletteFor } from '../plans/survival.ts';
 import { build, BLUEPRINTS } from './build.ts';
 import type { SkillContext } from './context.ts';
 import { craft } from './craft.ts';
@@ -88,6 +89,8 @@ export const SKILLS: Skill[] = [
         x: { type: 'integer' },
         y: { type: 'integer' },
         z: { type: 'integer' },
+        // the woods that grow around (oak, birch, spruce...): the farmhouse picks its colours from them
+        woods: { type: 'array', items: { type: 'string' } },
       },
       required: ['structure'],
     },
@@ -95,7 +98,8 @@ export const SKILLS: Skill[] = [
       const at = [args.x, args.y, args.z].every((n) => typeof n === 'number')
         ? new Vec3(Number(args.x), Number(args.y), Number(args.z))
         : undefined;
-      return build(ctx, String(args.structure), at);
+      const woods = Array.isArray(args.woods) ? args.woods.map(String) : undefined;
+      return build(ctx, String(args.structure), at, woods?.length ? paletteFor(woods) : undefined);
     },
   },
 ];
