@@ -78,3 +78,13 @@ function nearestLog(ctx: SkillContext, logs: number[], skipped: Set<string>): Bl
   const best = positions.filter((pos) => !skipped.has(pos.toString())).sort((a, b) => score(a) - score(b))[0];
   return best ? bot.blockAt(best) : null;
 }
+
+/** The kinds of wood growing around (oak, birch...), most common first. */
+export function woodsNearby(bot: SkillContext['bot'], radius = SEARCH_RADIUS) {
+  const counts = new Map<string, number>();
+  for (const pos of bot.findBlocks({ matching: (b) => isLog(b.name), maxDistance: radius, count: 512 })) {
+    const wood = bot.blockAt(pos)!.name.replace(/_log$/, '');
+    counts.set(wood, (counts.get(wood) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([wood]) => wood);
+}
