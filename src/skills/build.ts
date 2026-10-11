@@ -246,14 +246,21 @@ export function materialsNeeded(blocks: BlueprintBlock[]) {
   return needed;
 }
 
+// where a build stopped halfway (out of blocks, a path that took too long...): asked again
+// it goes back to finish that house instead of looking for new ground. A survival run
+// once left half a farmhouse on the surface and then tried to start over in a cave.
+const unfinished = new WeakMap<object, { name: string; corner: Vec3 }>();
+
 export async function build(ctx: SkillContext, name: string, origin?: Vec3, palette?: Palette) {
   const { bot } = ctx;
   const make = BLUEPRINTS[name.toLowerCase()];
   if (!make) throw new SkillError(`I don't know how to build a "${name}". I can build: ${Object.keys(BLUEPRINTS).join(', ')}.`);
   const blueprint = make(palette);
 
-  const site = origin ? undefined : findSpot(ctx, blueprint);
-  const corner = origin?.floored() ?? site!.corner;
+  const started = origin ? undefined : unfinished.get(bot);
+  const resume = started?.name === blueprint.name ? started.corner : undefined;
+  const site = origin || resume ? undefined : findSpot(ctx, blueprint);
+  const corner = origin?.floored() ?? resume ?? site!.corner;
   const todo = blueprint.blocks
     .map((block) => ({ ...block, pos: corner.plus(block.at) }))
     .filter((block) => !isPlaced(block.material, bot.blockAt(block.pos)?.name ?? ''));
@@ -268,7 +275,8 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
 
   // only once it knows it has everything: no point digging up the ground for nothing
   if (site) await levelSite(ctx, site);
-  ctx.log(`building a ${blueprint.name} at ${corner} (${todo.length} blocks)`);
+  ctx.log(`${resume ? 'back to the' : 'building a'} ${blueprint.name} at ${corner} (${todo.length} blocks)`);
+  unfinished.set(bot, { name: blueprint.name, corner });
   const total = todo.length;
   let placed = 0;
   const waited = new Map<string, number>();
@@ -293,6 +301,7 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
     placed++;
     if (placed % 15 === 0 || todo.length === 0) ctx.log(`placed ${placed} of ${total} blocks`);
   }
+  unfinished.delete(bot);
   return `Built a ${blueprint.name} at ${corner.x} ${corner.y} ${corner.z}.`;
 }
 
