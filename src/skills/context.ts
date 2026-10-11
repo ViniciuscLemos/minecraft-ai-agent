@@ -29,22 +29,23 @@ export function countItem(bot: Bot, match: (name: string) => boolean) {
 export const isLog = (name: string) => name.endsWith('_log') && !name.startsWith('stripped_');
 export const isPlanks = (name: string) => name.endsWith('_planks');
 
+// longer than any honest walk inside the 40-block area skills search
+const WALK_TIMEOUT = 60_000;
+
 /**
- * Walks until the goal is reached, turning "no path" and !stop into SkillErrors. With a
- * timeout it gives up after that long: the pathfinder can keep finding an empty "partial"
- * path forever (an item in a one-block hole kept it busy for ten minutes).
+ * Walks until the goal is reached, turning "no path" and !stop into SkillErrors. It gives
+ * up after `timeoutMs`: the pathfinder can keep finding an empty "partial" path forever (an
+ * item in a one-block hole kept it busy for ten minutes, a tree once for forty).
  */
-export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Goal>, where: string, timeoutMs?: number) {
+export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Goal>, where: string, timeoutMs = WALK_TIMEOUT) {
   checkAborted(ctx);
   const onAbort = () => ctx.bot.pathfinder.stop();
   ctx.signal.addEventListener('abort', onAbort, { once: true });
   let timedOut = false;
-  const timer = timeoutMs
-    ? setTimeout(() => {
-        timedOut = true;
-        ctx.bot.pathfinder.stop();
-      }, timeoutMs)
-    : undefined;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctx.bot.pathfinder.stop();
+  }, timeoutMs);
   try {
     for (let attempt = 1; ; attempt++) {
       // right after a teleport or a respawn the chunks around it are still arriving, and
@@ -75,8 +76,29 @@ export function goNear(ctx: SkillContext, pos: Vec3, range: number) {
   return walk(ctx, new goals.GoalNear(x, y, z, range), `${x} ${y} ${z}`);
 }
 
+// what piles up while digging and chopping and is never used: the stairs down to the stone
+// alone bring back a stack of dirt, and on the survival run a full inventory meant 10
+// minutes of chopping birch with nothing picked up
+const JUNK = /^(.*_sapling|granite|diorite|andesite|tuff|gravel|flint|wheat_seeds|rotten_flesh)$/;
+// some dirt is kept: it fills the dips when levelling the ground for a house
+const DIRT_KEPT = 32;
+
+/** Tosses junk when the inventory is nearly full, so the next drops have somewhere to go. */
+export async function makeRoom(ctx: SkillContext, free = 3) {
+  const { bot } = ctx;
+  if (bot.inventory.emptySlotCount() >= free) return;
+  let dirt = 0;
+  for (const item of bot.inventory.items()) {
+    const keep = item.name === 'dirt' ? Math.max(0, Math.min(item.count, DIRT_KEPT - dirt)) : JUNK.test(item.name) ? 0 : item.count;
+    if (item.name === 'dirt') dirt += keep;
+    if (keep < item.count) await bot.toss(item.type, null, item.count - keep);
+  }
+  if (bot.inventory.emptySlotCount() === 0) ctx.log('my inventory is full');
+}
+
 /** Walks to the items lying around `pos`, so whatever was just broken ends up in the inventory. */
 export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
+  await makeRoom(ctx);
   // dropped items can't be picked up for half a second; meanwhile the pathfinder drops
   // whatever it planned before the block broke (right after a dig it can get stuck
   // planning around a world that just changed)
@@ -85,8 +107,13 @@ export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
   const tried = new Set<number>();
   const findDrop = () =>
     Object.values(ctx.bot.entities).find(
-      (entity) => entity.name === 'item' && !tried.has(entity.id) && entity.position.distanceTo(pos) <= radius,
+      (entity) => entity.name === 'item' && !tried.has(entity.id) && entity.position.distanceTo(pos) <= radius && !unwanted(entity),
     );
+  // otherwise it walks right back to the junk makeRoom just threw out
+  const unwanted = (entity: { getDroppedItem(): { name: string } | null }) => {
+    const name = entity.getDroppedItem()?.name ?? '';
+    return JUNK.test(name) || (name === 'dirt' && countItem(ctx.bot, (n) => n === 'dirt') >= DIRT_KEPT);
+  };
   // on a busy server the item can show up a couple of seconds after the block breaks
   for (let waited = 0; !findDrop() && waited < 2500; waited += 100) await sleep(100);
   for (;;) {
