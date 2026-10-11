@@ -49,6 +49,19 @@ export async function placeNear(ctx: SkillContext, itemName: string): Promise<Bl
       return placeAt(ctx, itemName, spot);
     }
   }
+  // at the bottom of its mining stairs the corridor is one block wide: it carves a niche
+  // in the wall beside it, like a player would, as long as no water or lava is behind it
+  for (const side of FACES.slice(1, 5)) {
+    const spot = feet.plus(side);
+    const block = bot.blockAt(spot);
+    const below = bot.blockAt(spot.offset(0, -1, 0));
+    const wet = FACES.some((dir) => /water|lava/.test(bot.blockAt(spot.plus(dir))?.name ?? ''));
+    if (!block || block.boundingBox !== 'block' || !block.diggable || /bedrock|chest|furnace|crafting/.test(block.name)) continue;
+    if (wet || below?.boundingBox !== 'block') continue;
+    ctx.log(`no room for the ${itemName}, digging a spot in the wall`);
+    await bot.dig(block, true);
+    return placeAt(ctx, itemName, spot);
+  }
   throw new SkillError(`There's no free spot around me to put the ${itemName}.`);
 }
 
