@@ -53,7 +53,9 @@ export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Go
       await ctx.bot.waitForChunksToLoad();
       try {
         await ctx.bot.pathfinder.goto(goal);
-        return;
+        // goto sometimes resolves right away without moving (seen right after a dig, going
+        // for the logs under a trunk): checked, and one more go if it isn't really there
+        if (goal.isEnd(ctx.bot.entity.position.floored() as never) || attempt >= 3) return;
       } catch (error) {
         checkAborted(ctx);
         if (timedOut) throw new SkillError(`It's taking too long to get to ${where}.`);
@@ -104,10 +106,12 @@ export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
   // planning around a world that just changed)
   ctx.bot.pathfinder.setGoal(null);
   await sleep(600);
-  const tried = new Set<number>();
+  // drops that land together merge into one entity that keeps the first one's id, so an
+  // item already walked to can still be there with more in it: it gets a few tries
+  const tries = new Map<number, number>();
   const findDrop = () =>
     Object.values(ctx.bot.entities).find(
-      (entity) => entity.name === 'item' && !tried.has(entity.id) && entity.position.distanceTo(pos) <= radius && !unwanted(entity),
+      (entity) => entity.name === 'item' && (tries.get(entity.id) ?? 0) < 3 && entity.position.distanceTo(pos) <= radius && !unwanted(entity),
     );
   // otherwise it walks right back to the junk makeRoom just threw out
   const unwanted = (entity: { getDroppedItem(): { name: string } | null }) => {
@@ -119,12 +123,14 @@ export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
   for (;;) {
     const drop = findDrop();
     if (!drop) return;
-    tried.add(drop.id);
-    // next to it is enough (players grab items about a block away), and the exact spot is
-    // often under the rest of the trunk, where the bot doesn't fit
+    const attempt = (tries.get(drop.id) ?? 0) + 1;
+    tries.set(drop.id, attempt);
+    // next to it is enough the first time (players grab items about a block away), and the
+    // exact spot is often under the rest of the trunk; if the item is still there after
+    // that, it goes onto the item's own block
     const { x, y, z } = drop.position.floored();
     try {
-      await walk(ctx, new goals.GoalNear(x, y, z, 1), 'the item', 15_000);
+      await walk(ctx, new goals.GoalNear(x, y, z, attempt === 1 ? 1 : 0), 'the item', 15_000);
     } catch (error) {
       if (ctx.signal.aborted) throw error;
       // an item that fell somewhere unreachable isn't worth failing the whole skill
