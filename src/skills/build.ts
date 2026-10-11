@@ -297,6 +297,12 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
       await sleep(500);
       continue;
     }
+    // the ground was cleared before, so a block here now is one the pathfinder put down to
+    // climb (dirt, granite...) or a sapling that dropped in: it goes, the house block stays
+    const intruder = bot.blockAt(block!.pos);
+    if (intruder && /^(dirt|grass_block|granite|diorite|andesite|tuff|cobbled_deepslate|.*_sapling)$/.test(intruder.name)) {
+      await bot.dig(intruder, true);
+    }
     await placeAt(ctx, item.name, block!.pos, block!.facing);
     placed++;
     if (placed % 15 === 0 || todo.length === 0) ctx.log(`placed ${placed} of ${total} blocks`);
