@@ -34,6 +34,11 @@ export function createAgentBot(config: Config): Bot {
     movements.maxDropDown = 3; // falls of more than 3 blocks hurt
     movements.allowParkour = false; // jumping over gaps is where bots fall in holes
     movements.canDig = false; // it breaks blocks on purpose (skills), never to make a path
+    // the default lets it pillar up with cobblestone, which is the farmhouse's foundation:
+    // a survival run ran out of it halfway through the build. Junk stone and dirt only.
+    movements.scafoldingBlocks = ['dirt', 'granite', 'diorite', 'andesite', 'tuff', 'cobbled_deepslate']
+      .map((name) => bot.registry.itemsByName[name]?.id)
+      .filter((id): id is number => id !== undefined);
     bot.pathfinder.setMovements(movements);
     log(bot, `joined at ${position(bot)}`);
     bot.chat('Hi! Type !help to see what I can do.');
