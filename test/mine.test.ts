@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vec3 } from 'vec3';
-import { dropStays, isExposed, touchesBot } from '../src/skills/mine.ts';
+import { dropStays, isExposed, touchesBot, wantsStonePickaxe } from '../src/skills/mine.ts';
 
 // a tiny world: solid stone everywhere except the listed blocks (air unless named)
 function world(open: [number, number, number][], name = 'air') {
@@ -52,5 +52,22 @@ describe('touchesBot', () => {
     expect(touchesBot(feet, new Vec3(2, 10, 0))).toBe(false);
     expect(touchesBot(feet, new Vec3(1, 10, 1))).toBe(false);
     expect(touchesBot(feet, new Vec3(1, 9, 0))).toBe(false);
+  });
+});
+
+describe('wantsStonePickaxe', () => {
+  const items = (list: Record<string, number>) => Object.entries(list).map(([name, count]) => ({ name, count }));
+
+  it('upgrades as soon as there is cobblestone and wood for the sticks', () => {
+    expect(wantsStonePickaxe(items({ wooden_pickaxe: 1, cobblestone: 3, stick: 2 }))).toBe(true);
+    expect(wantsStonePickaxe(items({ wooden_pickaxe: 1, cobblestone: 5, oak_planks: 2 }))).toBe(true);
+    expect(wantsStonePickaxe(items({ wooden_pickaxe: 1, cobblestone: 3, birch_log: 1 }))).toBe(true);
+  });
+
+  it('waits for the cobblestone and the wood, and never replaces a better pickaxe', () => {
+    expect(wantsStonePickaxe(items({ wooden_pickaxe: 1, cobblestone: 2, stick: 4 }))).toBe(false);
+    expect(wantsStonePickaxe(items({ wooden_pickaxe: 1, cobblestone: 9 }))).toBe(false);
+    expect(wantsStonePickaxe(items({ stone_pickaxe: 1, cobblestone: 9, stick: 4 }))).toBe(false);
+    expect(wantsStonePickaxe(items({ iron_pickaxe: 1, cobblestone: 9, stick: 4 }))).toBe(false);
   });
 });

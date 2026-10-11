@@ -3,6 +3,7 @@ import type { Bot } from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
 import type { Vec3 } from 'vec3';
 import { checkAborted, countItem, pickUpDrops, SkillError, walk, type SkillContext } from './context.ts';
+import { craft } from './craft.ts';
 import { canReach } from './place.ts';
 import { stepDown } from './stairs.ts';
 import { equipBestTool, harvestToolNames } from './tools.ts';
@@ -119,6 +120,17 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
 
     // checked before walking there: no point going to the stone without a pickaxe
     const tools = harvestToolNames(bot, block);
+    if (tools?.includes('wooden_pickaxe') && wantsStonePickaxe(bot.inventory.items())) {
+      // a wooden pickaxe lasts 59 blocks: the survival run broke one halfway through its
+      // stone. Like a player, it makes a stone one as soon as it has the cobblestone.
+      try {
+        await craft(ctx, 'stone_pickaxe', 1);
+        ctx.log('made a stone pickaxe, the wooden one would not last');
+      } catch (error) {
+        if (!(error instanceof SkillError) || ctx.signal.aborted) throw error;
+        ctx.log(`couldn't make a stone pickaxe yet (${error.message})`);
+      }
+    }
     if (tools && !bot.inventory.items().some((item) => tools.includes(item.name))) {
       throw new SkillError(`I need a ${tools[0]} (or better) to mine ${type.name}.`);
     }
@@ -157,6 +169,14 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
 
   const have = dropName ? ` (now I have ${carried()} ${dropName})` : '';
   return `Mined ${mined()} ${type.name}${have}.`;
+}
+
+/** Only a wooden pickaxe, 3 cobblestone and something to make sticks from. */
+export function wantsStonePickaxe(items: { name: string; count: number }[]) {
+  const count = (test: (name: string) => boolean) => items.filter((i) => test(i.name)).reduce((n, i) => n + i.count, 0);
+  if (count((n) => /^(stone|iron|golden|diamond|netherite)_pickaxe$/.test(n)) > 0) return false;
+  const sticks = count((n) => n === 'stick') >= 2 || count((n) => n.endsWith('_planks')) >= 2 || count((n) => /_(log|wood|stem)$/.test(n)) >= 1;
+  return count((n) => n === 'cobblestone') >= 3 && sticks;
 }
 
 /** Walks about 10 blocks off in some direction (one it can get to) to start over. */
