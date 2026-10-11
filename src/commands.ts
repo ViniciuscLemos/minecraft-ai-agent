@@ -10,7 +10,9 @@ export type Command =
   | { name: 'inventory' }
   | { name: 'goto'; x: number; y: number | null; z: number }
   // runs one of the skills in src/skills, with the arguments it takes
-  | { name: 'skill'; skill: string; args: Record<string, unknown> };
+  | { name: 'skill'; skill: string; args: Record<string, unknown> }
+  // a request in plain words, for the planner
+  | { name: 'do'; request: string };
 
 export type ParseResult = { ok: true; command: Command } | { ok: false; error: string } | null;
 
@@ -26,6 +28,7 @@ export const HELP = [
   '!mine <block> [n] - mine blocks it can see, like !mine stone 3',
   '!place <item> - put a block down next to it',
   '!build <farmhouse|cottage|house|hut> - build next to it',
+  '!do <anything> - ask in plain words, like !do make a furnace',
 ];
 
 const ALIASES: Record<string, Command['name']> = {
@@ -63,6 +66,10 @@ export function parseCommand(message: string): ParseResult {
   if (!text.startsWith('!')) return null;
 
   const [word = '', ...args] = text.slice(1).trim().split(/\s+/);
+  if (word.toLowerCase() === 'do') {
+    const request = args.join(' ');
+    return request ? { ok: true, command: { name: 'do', request } } : { ok: false, error: 'Use !do <what you want, in plain words>' };
+  }
   const skill = SKILL_COMMANDS[word.toLowerCase()];
   if (skill) return skill(args);
 

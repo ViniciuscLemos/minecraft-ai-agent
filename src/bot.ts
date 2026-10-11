@@ -6,7 +6,11 @@ import pathfinderPkg from 'mineflayer-pathfinder';
 import { canCommand, HELP, parseCommand, type Command } from './commands.ts';
 import type { Config } from './config.ts';
 import { addReflexes } from './reflexes.ts';
-import { findSkill, SkillError } from './skills/index.ts';
+import { ClaudeCliPlanner } from './planner/claude-cli.ts';
+import { carryOut, PlanError, type Planner } from './planner/index.ts';
+import { ScriptedPlanner } from './planner/scripted.ts';
+import { worldState } from './planner/state.ts';
+import { findSkill, SkillError, type SkillContext } from './skills/index.ts';
 
 const { pathfinder, Movements, goals } = pathfinderPkg;
 
@@ -53,7 +57,14 @@ export function createAgentBot(config: Config): Bot {
   bot.on('kicked', (reason) => log(bot, `kicked: ${JSON.stringify(reason)}`));
   bot.on('error', (error) => log(bot, `error: ${error.message}`));
 
+  planners.set(bot, config.planner === 'scripted' ? new ScriptedPlanner() : new ClaudeCliPlanner());
   return bot;
+}
+
+const planners = new WeakMap<Bot, Planner>();
+
+function plannerFor(bot: Bot) {
+  return planners.get(bot) ?? new ScriptedPlanner();
 }
 
 // the skill running right now, so a new order or !stop can cancel it
@@ -67,7 +78,20 @@ export function cancelTask(bot: Bot) {
 export async function runSkill(bot: Bot, name: string, args: Record<string, unknown>): Promise<string> {
   const skill = findSkill(name);
   if (!skill) return say(bot, `I don't have a skill called ${name}.`);
+  return runTask(bot, `skill ${name} ${JSON.stringify(args)}`, (ctx) => skill.run(ctx, args));
+}
 
+/** Plans a plain text request, runs it and replans when a step fails. */
+export function runRequest(bot: Bot, request: string, planner: Planner): Promise<string> {
+  return runTask(bot, `request "${request}"`, async (ctx) => {
+    const result = await carryOut(ctx, planner, request, () => worldState(bot));
+    if (result.ok) return result.results.at(-1) ?? 'Done.';
+    throw new SkillError(`I couldn't finish: ${result.failed.error}`);
+  });
+}
+
+// one task at a time: a skill or a whole request, cancelled by !stop or a new order
+async function runTask(bot: Bot, label: string, work: (ctx: SkillContext) => Promise<string>): Promise<string> {
   // the previous skill has to really finish first: its pathfinder.stop() would otherwise
   // land on the new skill's path and cancel it
   const previous = tasks.get(bot);
@@ -78,14 +102,15 @@ export async function runSkill(bot: Bot, name: string, args: Record<string, unkn
   const controller = new AbortController();
   let finish = () => {};
   tasks.set(bot, { controller, done: new Promise<void>((resolve) => (finish = resolve)) });
-  log(bot, `skill ${name} ${JSON.stringify(args)}`);
+  log(bot, label);
   try {
-    const result = await skill.run({ bot, signal: controller.signal, log: (text) => log(bot, text) }, args);
+    const result = await work({ bot, signal: controller.signal, log: (text) => log(bot, text) });
     return controller.signal.aborted ? 'Stopped.' : say(bot, result);
   } catch (error) {
     if (controller.signal.aborted) return 'Stopped.';
-    if (error instanceof SkillError) return say(bot, error.message);
-    log(bot, `skill ${name} crashed: ${(error as Error).stack}`);
+    // a plan Claude got wrong is reported like a skill that couldn't do its job
+    if (error instanceof SkillError || error instanceof PlanError) return say(bot, error.message);
+    log(bot, `${label} crashed: ${(error as Error).stack}`);
     return say(bot, `Something went wrong: ${(error as Error).message}`);
   } finally {
     if (tasks.get(bot)?.controller === controller) tasks.delete(bot);
@@ -143,6 +168,11 @@ export function run(bot: Bot, command: Command, player: string) {
     case 'skill':
       bot.chat('On it.');
       void runSkill(bot, command.skill, command.args);
+      return;
+
+    case 'do':
+      bot.chat('Let me think about that.');
+      void runRequest(bot, command.request, plannerFor(bot));
       return;
   }
 }

@@ -3,6 +3,14 @@ import { canCommand, parseCommand } from '../src/commands.ts';
 import { loadConfig } from '../src/config.ts';
 
 describe('parseCommand', () => {
+  it('keeps a plain words request whole for the planner', () => {
+    expect(parseCommand('!do get some wood and make a furnace')).toEqual({
+      ok: true,
+      command: { name: 'do', request: 'get some wood and make a furnace' },
+    });
+    expect(parseCommand('!do')).toEqual({ ok: false, error: 'Use !do <what you want, in plain words>' });
+  });
+
   it('ignores normal chat', () => {
     expect(parseCommand('hello there')).toBeNull();
     expect(parseCommand('')).toBeNull();
@@ -62,12 +70,14 @@ describe('canCommand', () => {
 
 describe('loadConfig', () => {
   it('has defaults for the local server', () => {
-    expect(loadConfig({})).toEqual({ host: 'localhost', port: 25565, version: '1.21.1', username: 'Steve_AI', owners: [] });
+    expect(loadConfig({})).toEqual({ host: 'localhost', port: 25565, version: '1.21.1', username: 'Steve_AI', owners: [], planner: 'claude' });
   });
 
   it('reads the owner list and rejects bad values', () => {
     expect(loadConfig({ BOT_OWNERS: ' Ana, Vinicius ,' }).owners).toEqual(['Ana', 'Vinicius']);
     expect(() => loadConfig({ MC_PORT: 'abc' })).toThrow('MC_PORT');
     expect(() => loadConfig({ BOT_NAME: 'a name with spaces' })).toThrow('BOT_NAME');
+    expect(() => loadConfig({ PLANNER: 'gpt' })).toThrow('PLANNER');
+    expect(loadConfig({ PLANNER: 'scripted' }).planner).toBe('scripted');
   });
 });
