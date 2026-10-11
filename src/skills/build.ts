@@ -2,8 +2,8 @@
 // placed in an order where each one always has something to be placed against.
 import pathfinderPkg from 'mineflayer-pathfinder';
 import { Vec3 } from 'vec3';
-import { checkAborted, countItem, isLog, isPlanks, SkillError, walk, type SkillContext } from './context.ts';
-import { blockNames, canReach, placeAt, type Facing } from './place.ts';
+import { checkAborted, countItem, isLog, isPlanks, SkillError, sleep, walk, type SkillContext } from './context.ts';
+import { blockNames, canReach, onlyMobInTheWay, placeAt, type Facing } from './place.ts';
 import { levelSite, nearbyCorners, planSite, siteWork, type SitePlan } from './site.ts';
 
 const { goals } = pathfinderPkg;
@@ -271,6 +271,7 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
   ctx.log(`building a ${blueprint.name} at ${corner} (${todo.length} blocks)`);
   const total = todo.length;
   let placed = 0;
+  const waited = new Map<string, number>();
   while (todo.length) {
     checkAborted(ctx);
     const index = nextBlock(ctx, todo);
@@ -279,6 +280,15 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
     await standFor(ctx, block!.pos, corner, blueprint);
     const item = bot.inventory.items().find((it) => matches(block!.material)(it.name));
     if (!item) throw new SkillError(`I ran out of ${block!.material} halfway through.`);
+    // in a normal world sheep and pigs walk into the half-built house; that block waits
+    // for later instead of the whole build stopping
+    const key = block!.pos.toString();
+    if (onlyMobInTheWay(ctx, block!.pos) && (waited.get(key) ?? 0) < 10) {
+      waited.set(key, (waited.get(key) ?? 0) + 1);
+      todo.push(block!);
+      await sleep(500);
+      continue;
+    }
     await placeAt(ctx, item.name, block!.pos, block!.facing);
     placed++;
     if (placed % 15 === 0 || todo.length === 0) ctx.log(`placed ${placed} of ${total} blocks`);
