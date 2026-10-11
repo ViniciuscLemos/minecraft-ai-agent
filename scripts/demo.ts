@@ -8,11 +8,10 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright-core';
 import { createAgentBot, runSkill } from '../src/bot.ts';
-import { startViewer } from '../src/viewer.ts';
 import { startServer, sleep, waitFor, VERSION } from '../test/scenario/harness.ts';
 import { writeGif } from './gif.ts';
+import { openViewer } from './record.ts';
 import { SERVER_FOLDER } from './server.ts';
 import { SERVER_PROPERTIES } from './setup-server.ts';
 
@@ -53,58 +52,6 @@ function prepareFolder() {
   return folder;
 }
 
-// runs in the page before the viewer: takes over its camera and adds the log panel
-function pageSetup({ center }: { center: { x: number; y: number; z: number } }) {
-  const w = window as unknown as Record<string, any>;
-  let three: any;
-  Object.defineProperty(w, 'THREE', {
-    configurable: true,
-    get: () => three,
-    set(value) {
-      three = value;
-      const base = value.Camera.prototype.updateMatrixWorld;
-      // the viewer's orbit controls move the camera every frame; this runs right after
-      value.PerspectiveCamera.prototype.updateMatrixWorld = function (force: boolean) {
-        if (!this.__busy && w.__start) {
-          this.__busy = true;
-          const t = (performance.now() - w.__start) / 1000;
-          const angle = -0.6 + t * 0.09;
-          const radius = 17 - 3 * Math.sin(t * 0.05);
-          const height = 7 + 2 * Math.sin(t * 0.07);
-          this.position.set(center.x + Math.cos(angle) * radius, center.y + height, center.z + Math.sin(angle) * radius);
-          this.lookAt(center.x, center.y, center.z);
-          this.__busy = false;
-        }
-        return base.call(this, force);
-      };
-    },
-  });
-
-  addEventListener('DOMContentLoaded', () => {
-    const panel = document.createElement('div');
-    panel.innerHTML = `
-      <div style="font:600 22px/1.2 system-ui;margin-bottom:4px">minecraft-ai-agent</div>
-      <div style="font:14px system-ui;opacity:.8;margin-bottom:10px">a bot building a farmhouse on its own, block by block: no human controls</div>
-      <div id="log" style="font:13px/1.45 ui-monospace,Consolas,monospace"></div>`;
-    Object.assign(panel.style, {
-      position: 'fixed', left: '20px', top: '20px', width: '400px', padding: '16px 18px', color: '#fff',
-      background: 'rgba(15,18,24,.72)', borderRadius: '12px', zIndex: 10, backdropFilter: 'blur(4px)',
-    });
-    document.body.appendChild(panel);
-    const log = panel.querySelector('#log')!;
-    const events = new EventSource('/events');
-    events.onmessage = (e) => {
-      const text: string = JSON.parse(e.data);
-      // every pathfinder stop logs one of these; in a video they bury the lines that matter
-      if (text.startsWith('arrived at')) return;
-      const line = document.createElement('div');
-      line.textContent = '> ' + text;
-      log.appendChild(line);
-      while (log.childNodes.length > 9) log.removeChild(log.firstChild!);
-    };
-  });
-}
-
 async function main() {
   const folder = prepareFolder();
   const server = await startServer(PORT, folder);
@@ -127,16 +74,13 @@ async function main() {
     for (const [item, count] of MATERIALS) server.command(`give Steve_AI minecraft:${item} ${count}`);
     await waitFor(() => bot.inventory.items().length >= 12, 'the materials', 20_000);
 
-    await startViewer(bot, { port: VIEWER_PORT, viewDistance: 5 });
-    const browser = await chromium.launch({ channel: process.env.DEMO_BROWSER ?? 'msedge' });
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-      recordVideo: { dir: tmpVideo, size: { width: 1280, height: 720 } },
+    const { browser, context, page } = await openViewer(bot, {
+      port: VIEWER_PORT,
+      center: CENTER,
+      video: tmpVideo,
+      title: 'minecraft-ai-agent',
+      subtitle: 'a bot building a farmhouse on its own, block by block: no human controls',
     });
-    const page = await context.newPage();
-    await page.addInitScript(pageSetup, { center: CENTER });
-    await page.goto(`http://localhost:${VIEWER_PORT}`);
-    await page.evaluate(() => ((window as any).__start = performance.now()));
     await sleep(6000); // chunks and textures
 
     // a frame every couple of seconds for the GIF, while the video records in real time
