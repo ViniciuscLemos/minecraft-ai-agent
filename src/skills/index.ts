@@ -51,7 +51,8 @@ export const SKILLS: Skill[] = [
   },
   {
     name: 'mine',
-    description: 'Mine blocks of a type it can see nearby (e.g. stone, coal_ore, dirt). Says which tool is missing if it cannot.',
+    description:
+      'Mine blocks of a type (e.g. stone, coal_ore, sand). Give the block, not what it drops: stone drops cobblestone, coal_ore drops coal, grass_block drops dirt. Digs a staircase down to stone when none is exposed. Says which tool is missing if it cannot.',
     input: {
       type: 'object',
       properties: { block: { type: 'string' }, amount: { type: 'integer', minimum: 1, maximum: 64 } },
