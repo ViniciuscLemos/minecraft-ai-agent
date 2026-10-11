@@ -64,7 +64,7 @@ export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3, fa
 
   const existing = bot.blockAt(pos);
   if (existing && blockNames(itemName).includes(existing.name)) return existing;
-  if (!isFree(ctx, pos)) throw new SkillError(`Something is already at ${pos.x} ${pos.y} ${pos.z}.`);
+  if (!isFree(ctx, pos)) throw new SkillError(`${inTheSpot(ctx, pos)} is already at ${pos.x} ${pos.y} ${pos.z}.`);
 
   const face = FACES.find((dir) => bot.blockAt(pos.plus(dir))?.boundingBox === 'block');
   if (!face) throw new SkillError(`Nothing to put the ${itemName} against at ${pos.x} ${pos.y} ${pos.z}.`);
@@ -128,9 +128,15 @@ async function becomes(ctx: SkillContext, pos: Vec3, name: string) {
 
 /** Air (or grass and the like) with no player or mob standing in it. */
 function isFree(ctx: SkillContext, pos: Vec3) {
+  return inTheSpot(ctx, pos) === undefined;
+}
+
+/** What is taking up the spot (a block or a mob's name), if anything. */
+function inTheSpot(ctx: SkillContext, pos: Vec3) {
   const block = ctx.bot.blockAt(pos);
-  if (!block || block.boundingBox !== 'empty') return false;
-  return !Object.values(ctx.bot.entities).some((entity) => {
+  if (!block) return 'unloaded ground';
+  if (block.boundingBox !== 'empty') return `a ${block.name}`;
+  const entity = Object.values(ctx.bot.entities).find((entity) => {
     if (entity.name === 'item' || entity.name === 'experience_orb') return false;
     // the hitbox, not just the block the feet are in: a player standing near the edge of
     // a block already overlaps the next one, and the server refuses a block there
@@ -142,6 +148,13 @@ function isFree(ctx: SkillContext, pos: Vec3) {
       y + (entity.height ?? 1.8) > pos.y && y < pos.y + 1
     );
   });
+  if (entity) return entity === ctx.bot.entity ? 'I' : `a ${entity.displayName ?? entity.name ?? 'mob'}`;
+  return undefined;
+}
+
+/** Whether only a mob or player (not a block) is in the way at `pos`: that one moves on. */
+export function onlyMobInTheWay(ctx: SkillContext, pos: Vec3) {
+  return ctx.bot.blockAt(pos)?.boundingBox === 'empty' && !isFree(ctx, pos);
 }
 
 export function haveBlocks(ctx: SkillContext, itemName: string) {
