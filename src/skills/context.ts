@@ -120,6 +120,18 @@ export async function pickUpDrops(ctx: SkillContext, pos: Vec3, radius = 5) {
   };
   // on a busy server the item can show up a couple of seconds after the block breaks
   for (let waited = 0; !findDrop() && waited < 2500; waited += 100) await sleep(100);
+  if (!findDrop()) {
+    // on CI the bot sometimes sees no item entities at all (their spawn packet doesn't
+    // always parse), but the server still hands over what it walks through: so, like a
+    // player who saw the block break, it steps onto that spot anyway
+    const { x, y, z } = pos.floored();
+    ctx.log(`no items in sight, walking over to ${x} ${y} ${z} anyway`);
+    await walk(ctx, new goals.GoalNear(x, y, z, 1), 'where it broke', 10_000).catch((error) => {
+      if (ctx.signal.aborted) throw error;
+    });
+    await sleep(500);
+    return;
+  }
   for (;;) {
     const drop = findDrop();
     if (!drop) return;
