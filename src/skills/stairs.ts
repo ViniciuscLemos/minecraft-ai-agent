@@ -76,7 +76,8 @@ export function chooseDirection(world: World, feet: Vec3, preferred?: Vec3) {
 
 /**
  * Takes one step down the staircase (digging what's in the way) and returns the direction
- * it went, so the next call keeps going the same way. Throws when every way down is unsafe.
+ * it went, so the next call keeps going the same way, and whether it had to dig (a step
+ * down a slope is just walking). Throws when every way down is unsafe.
  */
 export async function stepDown(ctx: SkillContext, preferred?: Vec3) {
   const { bot } = ctx;
@@ -104,5 +105,5 @@ export async function stepDown(ctx: SkillContext, preferred?: Vec3) {
   await walk(ctx, new goals.GoalBlock(step.stand.x, step.stand.y, step.stand.z), 'the next step');
   // most of what it dug fell onto the step it's standing on, the rest is a block away
   await pickUpDrops(ctx, step.stand, 3);
-  return choice.dir;
+  return { dir: choice.dir, dug: step.dig.length > 0 };
 }

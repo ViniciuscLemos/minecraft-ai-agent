@@ -14,6 +14,12 @@ const SEARCH_RADIUS = 40;
 const MAX_STAIR_STEPS = 24;
 // exposed blocks further than this aren't worth the walk, it digs down instead
 const WALK_FOR_STONE = 16;
+// what's worth digging stairs for: the layer under the dirt. Sand, clay or gravel sit on top
+// (the first run dug 24 steps looking for sand), so those get a wider look around instead.
+const UNDERGROUND = /^(stone|deepslate|andesite|diorite|granite|tuff|.*_ore)$/;
+const SURFACE_RADIUS = 64;
+// how many fresh staircases it starts after one runs into water or a cave
+const MAX_RESTARTS = 3;
 
 export async function mine(ctx: SkillContext, blockName: string, amount: number) {
   const { bot } = ctx;
@@ -29,6 +35,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
   let broken = 0;
   const mined = () => (dropName ? carried() - start : broken);
 
+  const underground = UNDERGROUND.test(type.name);
   const skipped = new Set<string>();
   // in a normal world almost all the stone is underground: the nearest blocks are buried
   // ones it can't walk to (it never digs a path), so only exposed blocks count. The scan
@@ -48,12 +55,12 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
   const nextTarget = () => {
     targets = targets.filter(usable);
     if (!targets.length) {
-      targets = exposedBlocks(bot, type.id, usable, stairsOnly ? 2 : SEARCH_RADIUS);
+      targets = exposedBlocks(bot, type.id, usable, stairsOnly ? 2 : underground ? SEARCH_RADIUS : SURFACE_RADIUS);
     }
     const nearest = targets.sort((a, b) => a.distanceTo(bot.entity.position) - b.distanceTo(bot.entity.position))[0];
     // far-off exposed stone is usually a cliff or the bottom of a pit; stairs dug right here
     // get to stone in a few steps and the bot stays near its stuff
-    if (nearest && !stairsOnly && nearest.distanceTo(bot.entity.position) > WALK_FOR_STONE) {
+    if (nearest && underground && !stairsOnly && nearest.distanceTo(bot.entity.position) > WALK_FOR_STONE) {
       stairsOnly = true;
       return nextTarget();
     }
@@ -67,8 +74,10 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
   }
 
   let stairSteps = 0;
+  let stairMoves = 0;
   let failedWalks = 0;
   let stairDir: Vec3 | undefined;
+  let restarts = 0;
   while (mined() < amount) {
     checkAborted(ctx);
     if (broken > amount * 3) throw new SkillError(`I broke ${broken} ${type.name} but only got ${mined()} ${dropName}.`);
@@ -76,15 +85,34 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
     if (!pos) {
       // nothing exposed nearby: stone is almost always a few blocks under the grass, so dig
       // down to it like a player would. The walls of the stairs become exposed stone.
-      if (stairSteps < MAX_STAIR_STEPS) {
+      if (underground && stairSteps < MAX_STAIR_STEPS) {
         if (stairSteps === 0) ctx.log(`no ${type.name} in sight, digging stairs down to find some`);
         const before = carried();
-        stairDir = await stepDown(ctx, stairDir);
-        stairSteps++;
+        let step;
+        try {
+          step = await stepDown(ctx, stairDir);
+        } catch (error) {
+          if (!(error instanceof SkillError) || ctx.signal.aborted || restarts >= MAX_RESTARTS) throw error;
+          // water or a cave on every side: a player would just try a few blocks over
+          restarts++;
+          ctx.log(`${error.message} Trying somewhere else.`);
+          await moveAway(ctx);
+          stairDir = undefined;
+          stairSteps = 0;
+          stairMoves = 0;
+          continue;
+        }
+        stairDir = step.dir;
+        // walking down a hillside doesn't get it any closer to the stone under it
+        if (step.dug) stairSteps++;
+        if (++stairMoves > MAX_STAIR_STEPS * 2.5) stairSteps = MAX_STAIR_STEPS;
         broken += Math.max(0, carried() - before);
         continue;
       }
-      if (mined() === 0) throw new SkillError(`I can't find any ${type.name} within ${SEARCH_RADIUS} blocks or ${MAX_STAIR_STEPS} steps down.`);
+      if (mined() === 0) {
+        const where = underground ? `within ${SEARCH_RADIUS} blocks or ${MAX_STAIR_STEPS} steps down` : `within ${SURFACE_RADIUS} blocks`;
+        throw new SkillError(`I can't find any ${type.name} ${where}.`);
+      }
       throw new SkillError(`I only found ${mined()} of the ${amount} ${type.name} nearby.`);
     }
     const block = bot.blockAt(pos)!;
@@ -99,7 +127,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
     // to; trying them one by one took the whole morning, digging down is quicker
     const giveUpOn = (pos: Vec3) => {
       skipped.add(pos.toString());
-      if (++failedWalks >= 3 && !stairsOnly) {
+      if (++failedWalks >= 3 && underground && !stairsOnly) {
         stairsOnly = true;
         targets = [];
         ctx.log(`can't get to the ${type.name} I see, digging my own way down instead`);
@@ -129,6 +157,26 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
 
   const have = dropName ? ` (now I have ${carried()} ${dropName})` : '';
   return `Mined ${mined()} ${type.name}${have}.`;
+}
+
+/** Walks about 10 blocks off in some direction (one it can get to) to start over. */
+async function moveAway(ctx: SkillContext) {
+  const feet = ctx.bot.entity.position.floored();
+  const turns = [0, 1, 2, 3, 4, 5, 6, 7].sort(() => Math.random() - 0.5);
+  for (const turn of turns) {
+    // a bit closer on each try: in a forest the far spots are often behind a tree
+    const distance = 10 - Math.floor(turn / 2);
+    const angle = (turn * Math.PI) / 4;
+    const x = feet.x + Math.round(Math.cos(angle) * distance);
+    const z = feet.z + Math.round(Math.sin(angle) * distance);
+    try {
+      await walk(ctx, new goals.GoalNearXZ(x, z, 3), 'a new place to dig', 20_000);
+      return;
+    } catch (error) {
+      if (!(error instanceof SkillError) || ctx.signal.aborted) throw error;
+    }
+  }
+  throw new SkillError("I can't dig down here and I can't get anywhere else to try.");
 }
 
 // how far up and down from its feet it looks; deeper than this is a cave it can't walk into
