@@ -4,6 +4,7 @@ import pathfinderPkg from 'mineflayer-pathfinder';
 import { Vec3 } from 'vec3';
 import { checkAborted, countItem, isLog, isPlanks, SkillError, walk, type SkillContext } from './context.ts';
 import { blockNames, canReach, placeAt, type Facing } from './place.ts';
+import { levelSite, nearbyCorners, planSite, siteWork, type SitePlan } from './site.ts';
 
 const { goals } = pathfinderPkg;
 
@@ -251,7 +252,8 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
   if (!make) throw new SkillError(`I don't know how to build a "${name}". I can build: ${Object.keys(BLUEPRINTS).join(', ')}.`);
   const blueprint = make(palette);
 
-  const corner = origin?.floored() ?? findSpot(ctx, blueprint);
+  const site = origin ? undefined : findSpot(ctx, blueprint);
+  const corner = origin?.floored() ?? site!.corner;
   const todo = blueprint.blocks
     .map((block) => ({ ...block, pos: corner.plus(block.at) }))
     .filter((block) => !isPlaced(block.material, bot.blockAt(block.pos)?.name ?? ''));
@@ -264,6 +266,8 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
     throw new SkillError(`To build a ${blueprint.name} I need ${list}.`);
   }
 
+  // only once it knows it has everything: no point digging up the ground for nothing
+  if (site) await levelSite(ctx, site);
   ctx.log(`building a ${blueprint.name} at ${corner} (${todo.length} blocks)`);
   const total = todo.length;
   let placed = 0;
@@ -311,24 +315,28 @@ function hasSupport(ctx: SkillContext, pos: Vec3) {
   return NEIGHBOURS.some((dir) => ctx.bot.blockAt(pos.plus(dir))?.boundingBox === 'block');
 }
 
-/** The closest flat, empty ground around the bot, searching outwards ring by ring. */
-function findSpot(ctx: SkillContext, blueprint: Blueprint): Vec3 {
-  const feet = ctx.bot.entity.position.floored();
-  const offsets: Vec3[] = [];
-  for (let dx = -14; dx <= 14; dx++) {
-    for (let dz = -14; dz <= 14; dz++) {
-      for (const dy of [0, 1, -1]) offsets.push(new Vec3(dx, dy, dz));
+/**
+ * The ground to build on: the closest spot that is already flat and empty, or else the
+ * one that takes the least digging and filling to get there (weighed against the walk).
+ */
+function findSpot(ctx: SkillContext, blueprint: Blueprint, feet = ctx.bot.entity.position.floored()): SitePlan {
+  const blockAt = (pos: Vec3) => ctx.bot.blockAt(pos);
+  let best: SitePlan | undefined;
+  let bestScore = Infinity;
+  const dirt = countItem(ctx.bot, (n) => n === 'dirt');
+  for (const corner of nearbyCorners(blockAt, feet, blueprint.width, blueprint.depth)) {
+    const plan = planSite(blockAt, corner, blueprint.width, blueprint.depth);
+    // grass and dirt it digs up come back as dirt, and that's what the holes are filled with
+    if (!plan || plan.fill.length > dirt + plan.cut.filter((p) => /dirt|grass_block|podzol/.test(blockAt(p)?.name ?? '')).length) continue;
+    const score = siteWork(plan) + corner.distanceTo(feet) / 2;
+    if (siteWork(plan) === 0) return plan;
+    if (score < bestScore) {
+      best = plan;
+      bestScore = score;
     }
   }
-  const middle = (corner: Vec3) => corner.offset(blueprint.width / 2, 0, blueprint.depth / 2);
-  const candidates = offsets
-    .map((offset) => feet.plus(offset))
-    // not on top of the bot, so it doesn't start walled in
-    .filter((corner) => !contains(corner, blueprint, feet, 2))
-    .sort((a, b) => middle(a).distanceTo(feet) - middle(b).distanceTo(feet));
-  const spot = candidates.find((corner) => isBuildable(ctx, corner, blueprint));
-  if (!spot) throw new SkillError(`There's no flat, clear ${blueprint.width}x${blueprint.depth} area near me.`);
-  return spot;
+  if (!best) throw new SkillError(`There's no ${blueprint.width}x${blueprint.depth} spot near me I can clear for the ${blueprint.name}.`);
+  return best;
 }
 
 /** Whether pos is inside the footprint (grown by `margin` blocks on every side). */
@@ -337,20 +345,6 @@ function contains(corner: Vec3, blueprint: Blueprint, pos: Vec3, margin = 0) {
     pos.x >= corner.x - margin && pos.x < corner.x + blueprint.width + margin &&
     pos.z >= corner.z - margin && pos.z < corner.z + blueprint.depth + margin
   );
-}
-
-function isBuildable(ctx: SkillContext, corner: Vec3, blueprint: Blueprint) {
-  // the roof hangs one block over the walls, so that ring has to be clear too
-  for (let x = -1; x <= blueprint.width; x++) {
-    for (let z = -1; z <= blueprint.depth; z++) {
-      const inside = x >= 0 && z >= 0 && x < blueprint.width && z < blueprint.depth;
-      if (inside && ctx.bot.blockAt(corner.offset(x, -1, z))?.boundingBox !== 'block') return false;
-      for (let y = 0; y < 9; y++) {
-        if (ctx.bot.blockAt(corner.offset(x, y, z))?.boundingBox !== 'empty') return false;
-      }
-    }
-  }
-  return true;
 }
 
 /**
