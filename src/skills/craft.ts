@@ -144,9 +144,17 @@ async function getTable(ctx: SkillContext, depth: number, placeNew = false): Pro
   const tableId = bot.registry.blocksByName.crafting_table!.id;
   let table = placeNew ? null : bot.findBlock({ matching: tableId, maxDistance: TABLE_RADIUS });
   if (table) {
-    await goNear(ctx, table.position, 3);
-    // "near" can still be the wrong side of a wall, or up the stairs it just dug
-    if (canReach(bot.entity.position, table.position)) return table;
+    // "near" can still be the wrong side of a wall, or up the stairs it just dug; and from
+    // the bottom of those stairs there may be no path back at all (the survival run stopped
+    // there): four planks for a new table are cheaper than giving up
+    const reached = await goNear(ctx, table.position, 3).then(
+      () => canReach(bot.entity.position, table!.position),
+      (error) => {
+        if (!(error instanceof SkillError) || ctx.signal.aborted) throw error;
+        return false;
+      },
+    );
+    if (reached) return table;
     table = null;
   }
 
