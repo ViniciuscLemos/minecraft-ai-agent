@@ -259,7 +259,7 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
 
   const started = origin ? undefined : unfinished.get(bot);
   const resume = started?.name === blueprint.name ? started.corner : undefined;
-  const site = origin || resume ? undefined : findSpot(ctx, blueprint);
+  const site = origin || resume ? undefined : findSpotOrGoBack(ctx, blueprint);
   const corner = origin?.floored() ?? resume ?? site!.corner;
   const todo = blueprint.blocks
     .map((block) => ({ ...block, pos: corner.plus(block.at) }))
@@ -356,6 +356,21 @@ function findSpot(ctx: SkillContext, blueprint: Blueprint, feet = ctx.bot.entity
   }
   if (!best) throw new SkillError(`There's no ${blueprint.width}x${blueprint.depth} spot near me I can clear for the ${blueprint.name}.`);
   return best;
+}
+
+/**
+ * After mining it often ends at the bottom of its own stairs or deep in a forest, with no
+ * flat ground in reach; the spawn point was open enough to start from, so it looks there.
+ */
+function findSpotOrGoBack(ctx: SkillContext, blueprint: Blueprint): SitePlan {
+  try {
+    return findSpot(ctx, blueprint);
+  } catch (error) {
+    const spawn = ctx.bot.spawnPoint?.floored();
+    if (!spawn || spawn.distanceTo(ctx.bot.entity.position) < 16) throw error;
+    ctx.log(`nothing flat around here, looking near ${spawn} where I started`);
+    return findSpot(ctx, blueprint, spawn);
+  }
 }
 
 /** Whether pos is inside the footprint (grown by `margin` blocks on every side). */
