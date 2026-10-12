@@ -39,7 +39,7 @@ server, so a bad plan fails safely instead of walking the bot into lava.
 
 - [x] **Stage 1:** local server setup, bot that follows you and obeys chat commands, scenario tests on a real server
 - [x] **Stage 2:** skills (wood, crafting, mining, smelting, building) and reflexes (eating, getting unstuck, deaths), each tested on a real server
-- [ ] **Stage 3/4:** Claude plans and replans from plain text requests
+- [ ] **Stage 3/4:** Claude plans and replans from plain text requests (`!do` works; next: a longer test on a real server)
 - [ ] **Stage 5:** web panel with a 3D view of what the bot sees and its reasoning log
 - [ ] **Stage 6:** demo video
 
@@ -71,8 +71,22 @@ Then open Minecraft 1.21.1, join `localhost` and type in the chat:
 | `!craft <item> [n]` | crafts something, making the table, planks and sticks it needs on the way |
 | `!mine <block> [n]` | mines blocks it can see, and says which tool is missing if it can't |
 | `!build <farmhouse\|cottage\|house\|hut>` | builds next to it, and lists the missing materials if it can't |
+| `!do <anything>` | asks in plain words, like `!do make a furnace`: Claude plans the steps, the bot runs them |
 
 Settings like the bot name and who can give it orders go in `.env` (see `.env.example`).
+
+### How `!do` works
+
+The bot sends Claude the request, its inventory, the trees and blocks around it and the list of skills
+(the same ones the commands above use), and gets back a list of steps as JSON, checked against the skills
+before anything runs. If a step fails, the error goes back to Claude with what already worked and it
+plans the rest. `!do make a furnace` with empty pockets came back in about 7 seconds as: chop 4 oak logs,
+craft a wooden pickaxe, mine 8 stone, craft the furnace.
+
+It calls the [Claude Code](https://claude.com/claude-code) CLI in headless mode (`claude -p`, Sonnet, no
+tools), so it runs on the Claude plan you're logged into and doesn't need an API key: install it and log
+in once. One plan is one call. With `PLANNER=scripted` it skips Claude and only knows how to build
+things from scratch (the survival plan below).
 
 ## Tests
 
