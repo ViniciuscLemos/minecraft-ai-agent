@@ -56,8 +56,14 @@ export function createAgentBot(config: Config): Bot {
   addReflexes(bot, (text) => log(bot, text), () => cancelTask(bot));
 
   bot.on('goal_reached', () => log(bot, `arrived at ${position(bot)}`));
+  // skills retry paths a lot (114 noPath in one survival run), and vanilla kicks
+  // a player for chat spam, so the chat only hears about it once every 10 s
+  let lastNoPath = 0;
   bot.on('path_update', (result) => {
-    if (result.status === 'noPath') bot.chat("I can't find a way there.");
+    if (result.status !== 'noPath') return;
+    if (Date.now() - lastNoPath < 10_000) return;
+    lastNoPath = Date.now();
+    bot.chat("I can't find a way there.");
   });
   bot.on('kicked', (reason) => log(bot, `kicked: ${JSON.stringify(reason)}`));
   bot.on('error', (error) => log(bot, `error: ${error.message}`));
