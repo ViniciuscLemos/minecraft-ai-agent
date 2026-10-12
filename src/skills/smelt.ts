@@ -2,9 +2,10 @@
 // It finds a furnace nearby or places one (crafting it from cobblestone if needed), and
 // burns wood when there's no coal.
 import type { Block } from 'prismarine-block';
-import { checkAborted, countItem, goNear, isLog, isPlanks, sleep, SkillError, type SkillContext } from './context.ts';
+import { checkAborted, countItem, goNear, isLog, isPlanks, pickUpDrops, sleep, SkillError, type SkillContext } from './context.ts';
 import { craft } from './craft.ts';
 import { placeNear } from './place.ts';
+import { equipBestTool } from './tools.ts';
 
 const FURNACE_RADIUS = 24;
 // a furnace takes 10 seconds per item
@@ -56,7 +57,7 @@ export async function smelt(ctx: SkillContext, input: string, amount: number) {
   const fuel = chooseFuel(bot.inventory.items().filter((it) => it.name !== name), amount);
   if (!fuel) throw new SkillError(`I have nothing to burn: I need coal, logs or planks.`);
 
-  const furnaceBlock = await getFurnace(ctx);
+  const { block: furnaceBlock, placed } = await getFurnace(ctx);
   await goNear(ctx, furnaceBlock.position, 2);
   const furnace = await bot.openFurnace(furnaceBlock);
   try {
@@ -79,13 +80,21 @@ export async function smelt(ctx: SkillContext, input: string, amount: number) {
   } finally {
     furnace.close();
   }
+  // a furnace it put down just for this goes back in the pocket, like a player would: a
+  // Claude-planned run smelted its glass in the furnace meant for the house, left it on
+  // the beach and the build came up one furnace short
+  if (placed && bot.inventory.items().some((item) => item.name.endsWith('_pickaxe'))) {
+    await equipBestTool(bot, furnaceBlock);
+    await bot.dig(furnaceBlock, true);
+    await pickUpDrops(ctx, furnaceBlock.position);
+  }
   return `Smelted ${amount} ${name} into ${output} (now I have ${countItem(bot, (n) => n === output)}).`;
 }
 
-async function getFurnace(ctx: SkillContext): Promise<Block> {
+async function getFurnace(ctx: SkillContext): Promise<{ block: Block; placed: boolean }> {
   const { bot } = ctx;
   const nearby = bot.findBlock({ matching: bot.registry.blocksByName.furnace!.id, maxDistance: FURNACE_RADIUS });
-  if (nearby) return nearby;
+  if (nearby) return { block: nearby, placed: false };
   if (countItem(bot, (n) => n === 'furnace') === 0) await craft(ctx, 'furnace', 1);
-  return placeNear(ctx, 'furnace');
+  return { block: await placeNear(ctx, 'furnace'), placed: true };
 }
