@@ -21,6 +21,8 @@ const UNDERGROUND = /^(stone|deepslate|andesite|diorite|granite|tuff|.*_ore)$/;
 const SURFACE_RADIUS = 64;
 // how many fresh staircases it starts after one runs into water or a cave
 const MAX_RESTARTS = 3;
+// spots of sand (or clay, gravel) it tries to walk to before telling the planner it can't
+const MAX_FAILED_WALKS = 6;
 
 export async function mine(ctx: SkillContext, blockName: string, amount: number) {
   const { bot } = ctx;
@@ -78,6 +80,8 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
   let stairMoves = 0;
   let failedWalks = 0;
   let stairDir: Vec3 | undefined;
+  // where the current staircase starts: the way back up when it has to start over
+  let stairTop: Vec3 | undefined;
   let restarts = 0;
   while (mined() < amount) {
     checkAborted(ctx);
@@ -88,6 +92,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
       // down to it like a player would. The walls of the stairs become exposed stone.
       if (underground && stairSteps < MAX_STAIR_STEPS) {
         if (stairSteps === 0) ctx.log(`no ${type.name} in sight, digging stairs down to find some`);
+        stairTop ??= bot.entity.position.floored();
         const before = carried();
         let step;
         try {
@@ -97,8 +102,13 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
           // water or a cave on every side: a player would just try a few blocks over
           restarts++;
           ctx.log(`${error.message} Trying somewhere else.`);
+          // from the bottom of the stairs every way out goes through water or rock, and the
+          // pathfinder gave up there in a Claude-planned run; the stairs it just dug always
+          // lead back up
+          if (stairTop) await climbBack(ctx, stairTop);
           await moveAway(ctx);
           stairDir = undefined;
+          stairTop = undefined;
           stairSteps = 0;
           stairMoves = 0;
           continue;
@@ -139,6 +149,12 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
     // to; trying them one by one took the whole morning, digging down is quicker
     const giveUpOn = (pos: Vec3) => {
       skipped.add(pos.toString());
+      // sand and gravel have no stairs to fall back on: a Claude-planned run walked from
+      // one beach block to the next for 15 minutes from the bottom of a mine, without a word.
+      // Better to say so and let the planner pick something else.
+      if (!underground && failedWalks + 1 >= MAX_FAILED_WALKS) {
+        throw new SkillError(`I can't get to any ${type.name} from here (tried ${MAX_FAILED_WALKS} spots).`);
+      }
       if (++failedWalks >= 3 && underground && !stairsOnly) {
         stairsOnly = true;
         targets = [];
@@ -167,6 +183,9 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
     if (broken % 8 === 0) ctx.log(`mined ${mined()}/${amount} ${type.name}`);
   }
 
+  // back up the stairs: the next step (sand on the beach, a crafting table) is on the
+  // surface, and from the bottom of a mine the way there was often a dead end
+  if (stairTop) await climbBack(ctx, stairTop);
   const have = dropName ? ` (now I have ${carried()} ${dropName})` : '';
   return `Mined ${mined()} ${type.name}${have}.`;
 }
@@ -177,6 +196,16 @@ export function wantsStonePickaxe(items: { name: string; count: number }[]) {
   if (count((n) => /^(stone|iron|golden|diamond|netherite)_pickaxe$/.test(n)) > 0) return false;
   const sticks = count((n) => n === 'stick') >= 2 || count((n) => n.endsWith('_planks')) >= 2 || count((n) => /_(log|wood|stem)$/.test(n)) >= 1;
   return count((n) => n === 'cobblestone') >= 3 && sticks;
+}
+
+async function climbBack(ctx: SkillContext, top: Vec3) {
+  if (ctx.bot.entity.position.distanceTo(top) < 2) return;
+  try {
+    await walk(ctx, new goals.GoalBlock(top.x, top.y, top.z), 'the top of my stairs', 30_000);
+  } catch (error) {
+    // moveAway still gets its own go from wherever it ended up
+    if (!(error instanceof SkillError) || ctx.signal.aborted) throw error;
+  }
 }
 
 /** Walks about 10 blocks off in some direction (one it can get to) to start over. */
