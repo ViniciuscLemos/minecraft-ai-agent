@@ -127,8 +127,18 @@ export async function carryOut(
   let steps = await planner.plan(request, state());
   ctx.log(`plan: ${steps.map((s) => s.skill).join(' > ')}`);
   let result = await run(ctx, steps);
+  let lastFailure = '';
   for (let round = 1; !result.ok && round <= replans; round++) {
     const failure = { step: result.failed.step, error: result.failed.error, done: result.results };
+    // the same skill failing the same way twice in a row is the skill's problem, not the
+    // plan's: a Claude-planned run asked four times for "mine stone" at the bottom of a
+    // flooded staircase. Each new plan is a call on the Claude plan, so stop there.
+    const signature = `${failure.step.skill}: ${failure.error}`;
+    if (signature === lastFailure) {
+      ctx.log(`step ${result.failed.index + 1} failed the same way again (${failure.error}), giving up`);
+      break;
+    }
+    lastFailure = signature;
     ctx.log(`step ${result.failed.index + 1} failed (${failure.error}), planning again`);
     steps = await planner.replan(request, state(), failure);
     ctx.log(`new plan: ${steps.map((s) => s.skill).join(' > ')}`);

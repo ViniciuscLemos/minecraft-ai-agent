@@ -150,11 +150,23 @@ describe('carryOut', () => {
   it('gives up after the replans run out', async () => {
     let replans = 0;
     const planner: Planner = { plan: async () => [step('mine')], replan: async () => (replans++, [step('mine')]) };
+    let tries = 0;
     const run = async (_ctx: SkillContext, steps: Step[]): Promise<PlanResult> => ({
-      ok: false, results: [], failed: { index: 0, step: steps[0]!, error: 'no' },
+      ok: false, results: [], failed: { index: 0, step: steps[0]!, error: `no (try ${++tries})` },
     });
     const result = await carryOut(ctx, planner, 'x', () => state, { run, replans: 2 });
     expect(result.ok).toBe(false);
     expect(replans).toBe(2);
+  });
+
+  it("doesn't ask again when the same step fails the same way twice", async () => {
+    let replans = 0;
+    const planner: Planner = { plan: async () => [step('mine')], replan: async () => (replans++, [step('mine')]) };
+    const run = async (_ctx: SkillContext, steps: Step[]): Promise<PlanResult> => ({
+      ok: false, results: [], failed: { index: 0, step: steps[0]!, error: "can't dig down here" },
+    });
+    const result = await carryOut(ctx, planner, 'x', () => state, { run, replans: 4 });
+    expect(result.ok).toBe(false);
+    expect(replans).toBe(1);
   });
 });

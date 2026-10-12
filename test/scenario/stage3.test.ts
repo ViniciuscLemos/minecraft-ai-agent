@@ -84,12 +84,13 @@ describe('requests', () => {
     expect(planner.states[1]!.inventory.wooden_pickaxe).toBe(1);
   }, 120_000);
 
-  it('gives up with the reason once the replans run out', async () => {
+  it('gives up with the reason when the same step keeps failing the same way', async () => {
     const wrong: Step[] = [{ skill: 'mine', args: { block: 'diamond_ore', amount: 1 }, why: 'shiny' }];
     const planner = new FakePlanner([wrong, wrong, wrong, wrong]);
     const result = await runRequest(agent, 'find a diamond', planner);
     expect(result).toMatch(/^I couldn't finish: /);
-    expect(planner.failures).toHaveLength(3);
+    // one replan; the second identical failure isn't worth another call
+    expect(planner.failures).toHaveLength(1);
   }, 120_000);
 
   it('answers a !do it cannot plan without Claude', async () => {
