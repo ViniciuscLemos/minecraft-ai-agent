@@ -62,7 +62,19 @@ export async function collectWood(ctx: SkillContext, amount: number, type?: stri
       await walk(ctx, new goals.GoalLookAtBlock(block.position, bot.world), 'that tree');
     } catch (error) {
       if (!(error instanceof SkillError) || ctx.signal.aborted) throw error;
-      ctx.log(`skipping the log at ${block.position}: ${error.message}`);
+      // the whole tree, not just this log: the trunk and branches above it are behind the
+      // same wall, and one run spent a minute on each of 8 logs of one tree before moving on
+      const tree = treeLogs(bot, block.position, logs);
+      ctx.log(`skipping the tree at ${block.position} (${tree.length} logs): ${error.message}`);
+      for (const pos of tree) skipped.add(pos.toString());
+      continue;
+    }
+
+    // walk gives up quietly after a few tries, and bot.dig doesn't care how far the block
+    // is: the client then "cuts" a log 15 blocks away, the server ignores it and no item
+    // ever shows up (that was the "bot stops seeing items" on the long survival runs)
+    if (!bot.canDigBlock(block)) {
+      ctx.log(`skipping the log at ${block.position}: out of reach from where I ended up`);
       skipped.add(block.position.toString());
       continue;
     }
@@ -73,6 +85,12 @@ export async function collectWood(ctx: SkillContext, amount: number, type?: stri
     // pathfinder sees the tree as it is now
     bot.pathfinder.setGoal(null);
     await sleep(300);
+    // the server has the last word: a cut it refused puts the log right back
+    if (wanted(bot.blockAt(block.position)?.name ?? '')) {
+      ctx.log(`the log at ${block.position} is still there, the server didn't take the cut`);
+      skipped.add(block.position.toString());
+      continue;
+    }
     chopped.push(block.position);
     cut.add(block.position.toString());
     const trunkDone = !wanted(bot.blockAt(block.position.offset(0, 1, 0))?.name ?? '');
@@ -96,6 +114,21 @@ export function isBranch(bot: Pick<Bot, 'blockAt'>, pos: Vec3, cut: Set<string> 
   if (cut.has(pos.offset(0, -1, 0).toString())) return false;
   const below = bot.blockAt(pos.offset(0, -1, 0));
   return !below || below.boundingBox === 'empty' || below.name.endsWith('_leaves');
+}
+
+/** The logs of the tree a log belongs to: logs within 2 blocks across, up to 12 up or down. */
+export function treeLogs(bot: SkillContext['bot'], from: Vec3, logs: number[]) {
+  const found = [from];
+  for (let dy = -12; dy <= 12; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        if (!dx && !dy && !dz) continue;
+        const pos = from.offset(dx, dy, dz);
+        if (logs.includes(bot.blockAt(pos)?.type ?? -1)) found.push(pos);
+      }
+    }
+  }
+  return found;
 }
 
 function nearestLog(ctx: SkillContext, logs: number[], skipped: Set<string>, cut: Set<string>): Block | null {

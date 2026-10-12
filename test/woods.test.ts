@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vec3 } from 'vec3';
-import { isBranch, pickWoods } from '../src/skills/wood.ts';
+import { isBranch, pickWoods, treeLogs } from '../src/skills/wood.ts';
 
 describe('pickWoods', () => {
   it('keeps the woods with enough logs, most common first', () => {
@@ -38,5 +38,20 @@ describe('isBranch', () => {
     expect(isBranch(at({ [new Vec3(0, 67, 0).toString()]: 'grass_block' }), log)).toBe(false);
     expect(isBranch(at({ [new Vec3(0, 67, 0).toString()]: 'oak_log' }), log)).toBe(false);
     expect(isBranch(at({}), log, new Set([new Vec3(0, 67, 0).toString()]))).toBe(false);
+  });
+});
+
+describe('treeLogs', () => {
+  const LOG = 7;
+  const bot = (logs: Vec3[]) =>
+    ({ blockAt: (pos: Vec3) => (logs.some((l) => l.equals(pos)) ? { type: LOG } : { type: 0 }) }) as never;
+
+  it('gets the trunk and branches of one tree, not the next tree over', () => {
+    const trunk = [0, 1, 2, 3, 4].map((y) => new Vec3(0, 64 + y, 0));
+    const branch = new Vec3(1, 68, 1);
+    const neighbour = new Vec3(5, 64, 0);
+    const found = treeLogs(bot([...trunk, branch, neighbour]), trunk[0]!, [LOG]);
+    expect(found).toHaveLength(6);
+    expect(found.some((p) => p.equals(neighbour))).toBe(false);
   });
 });
