@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import type { Bot } from 'mineflayer';
+import { Vec3 } from 'vec3';
 import { startViewer } from '../src/viewer.ts';
 import { sleep } from '../test/scenario/harness.ts';
 import { writeGif } from './gif.ts';
@@ -16,6 +17,40 @@ export interface Point {
   x: number;
   y: number;
   z: number;
+}
+
+/** A parked camera: where it sits around the point it looks at. */
+export interface Shot {
+  angle: number;
+  radius: number;
+  height: number;
+}
+
+/**
+ * The angle around `center` with the fewest solid blocks (mostly leaves) on the line from
+ * the camera to the house, so the final screenshot isn't a wall of trees.
+ */
+export function clearestShot(bot: Bot, center: Point, radius = 16, height = 9, tries = 24): Shot {
+  let best = { angle: 0, radius, height, blocked: Infinity };
+  for (let i = 0; i < tries; i++) {
+    const angle = (i / tries) * Math.PI * 2;
+    const from = { x: center.x + Math.cos(angle) * radius, y: center.y + height, z: center.z + Math.sin(angle) * radius };
+    let blocked = 0;
+    // a ray to the centre misses a tree covering half the house: aim at a grid over it too
+    for (const dx of [-4, 0, 4]) {
+      for (const dy of [-2, 0, 3]) {
+        const to = { x: center.x + dx * Math.sin(angle), y: center.y + dy, z: center.z - dx * Math.cos(angle) };
+        // stop short of the house: the house itself is supposed to be in the way
+        for (let d = 0; d < 0.75; d += 0.03) {
+          const p = new Vec3(from.x + (to.x - from.x) * d, from.y + (to.y - from.y) * d, from.z + (to.z - from.z) * d);
+          if (bot.blockAt(p)?.boundingBox === 'block') blocked++;
+        }
+      }
+    }
+    if (blocked < best.blocked) best = { angle, radius, height, blocked };
+  }
+  console.log(`camera parked at ${Math.round((best.angle * 180) / Math.PI)}°, ${best.blocked} blocks in the way`);
+  return { angle: best.angle, radius: best.radius, height: best.height };
 }
 
 export interface PanelText {
@@ -54,9 +89,12 @@ export function pageSetup({ center, title, subtitle }: { center?: Point } & Pane
           last = now;
           // eased even towards a fixed point, so the switch to the end orbit is a glide
           if (!center) for (const axis of ['x', 'y', 'z'] as const) focus[axis] += (target[axis] - focus[axis]) * k;
-          const angle = -0.6 + t * (fixed ? 0.09 : 0.05);
-          const radius = fixed ? 17 - 3 * Math.sin(t * 0.05) : 13 - 2 * Math.sin(t * 0.04);
-          const height = fixed ? 7 + 2 * Math.sin(t * 0.07) : 8 + 2 * Math.sin(t * 0.06);
+          // __still (an angle picked in node) parks the camera for the final screenshot
+          const still: Shot | undefined = fixed ? w.__still : undefined;
+          const angle = still?.angle ?? -0.6 + t * (fixed ? 0.09 : 0.05);
+          const radius = still?.radius ?? (fixed ? 17 - 3 * Math.sin(t * 0.05) : 13 - 2 * Math.sin(t * 0.04));
+          // the end orbit stays high enough to look over the trees around the house
+          const height = still?.height ?? (fixed ? 10 + 2 * Math.sin(t * 0.07) : 8 + 2 * Math.sin(t * 0.06));
           this.position.set(focus.x + Math.cos(angle) * radius, focus.y + height, focus.z + Math.sin(angle) * radius);
           this.lookAt(focus.x, focus.y, focus.z);
           this.__busy = false;
