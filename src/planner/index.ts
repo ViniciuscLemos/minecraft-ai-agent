@@ -5,6 +5,7 @@
 import type { Step } from '../plans/survival.ts';
 import { runPlan, type PlanResult } from '../plans/run.ts';
 import { SKILLS, type Skill, type SkillContext } from '../skills/index.ts';
+import { buildingNotes } from './notes.ts';
 
 export type { Step };
 
@@ -79,6 +80,8 @@ export function describeState(state: WorldState) {
 
 export function requestPrompt(request: string, state: WorldState, failure?: Failure) {
   const parts = [`Request: ${request}`, describeState(state), `Skills:\n${describeSkills()}`];
+  const notes = buildingNotes(request, state.woods);
+  if (notes) parts.push(notes);
   if (failure) {
     parts.push(
       `The last plan stopped at "${failure.step.skill} ${JSON.stringify(failure.step.args)}": ${failure.error}`,

@@ -59,6 +59,15 @@ describe('requestPrompt', () => {
     expect(prompt).toContain('stopped at "mine {"block":"cobblestone"}": No cobblestone around.');
     expect(prompt).toContain('Steps that worked before it: Crafted 1 wooden_pickaxe.');
   });
+
+  it('adds the bill of materials when the request names a structure', () => {
+    const prompt = requestPrompt('build a farmhouse', state);
+    // oak and birch around: birch walls, oak roof (paletteFor), and the build step gets the same woods
+    expect(prompt).toMatch(/Building a farmhouse takes: .*\d+ birch_planks/);
+    expect(prompt).toMatch(/\d+ oak_stairs/);
+    expect(prompt).toContain('build {"structure":"farmhouse","woods":["oak","birch"]}');
+    expect(requestPrompt('make a furnace', state)).not.toContain('takes:');
+  });
 });
 
 describe('claude-cli backend', () => {

@@ -4,13 +4,9 @@
 import { survivalPlan } from '../plans/survival.ts';
 import { BLUEPRINTS } from '../skills/build.ts';
 import { PlanError, type Planner, type WorldState } from './index.ts';
+import { structureIn } from './notes.ts';
 
-export function structureIn(request: string) {
-  const words: string[] = request.toLowerCase().match(/[a-z]+/g) ?? [];
-  const name = Object.keys(BLUEPRINTS).find((structure) => words.includes(structure));
-  // "a home" with no name gets the farmhouse: it's the one worth looking at
-  return name ?? (words.includes('home') ? 'farmhouse' : undefined);
-}
+export { structureIn };
 
 export class ScriptedPlanner implements Planner {
   async plan(request: string, state: WorldState) {
