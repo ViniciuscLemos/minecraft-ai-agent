@@ -98,6 +98,36 @@ npm run test:scenario     # starts a real server in a fresh world and checks the
 The scenario tests join a test player, give the bot orders in the chat and check what happens in the
 world: where it ends up, what's in its inventory, which blocks it placed. They run in CI too, on every push.
 
+## Survival run
+
+```bash
+npm run survival                   # empty pockets to finished farmhouse, in a normal world
+npm run survival -- --record       # same, filmed: a 30x timelapse (.webm), a GIF and a picture of the house
+npm run survival -- --build-only   # hands over the materials and only builds
+npm run survival -- --planner claude   # Claude writes the plan (and a new one when a step fails)
+```
+
+This is the long test: a normal world (seed 8675309, oak and birch trees, stone and a beach near spawn),
+a bot with nothing, and the farmhouse as the goal. It works out what the house takes, picks the wood
+palette from the trees around, and goes: chop, planks and stairs, a crafting table and a wooden pickaxe,
+dig a staircase down to stone when none is exposed, a stone pickaxe, a furnace, sand from the beach,
+glass and panes, charcoal and torches, then it levels a spot and builds. A full run takes 17 to 30 minutes,
+most of it chopping.
+
+If a step fails, it looks at what it has and plans again from there (the furnace burns some of the planks
+the walls need, so it sometimes comes back for a few more logs). By default the plan is scripted
+(`src/plans/survival.ts`).
+
+![Timelapse of a scripted survival run, from the first log to the farmhouse](docs/survival.gif)
+
+With `--planner claude` the same run is planned by Claude instead: it gets the request ("build a
+farmhouse"), the inventory, the trees and blocks around, the skill list and the house's bill of
+materials, and answers with the steps. When a step fails it gets the error and plans the rest. The
+first full run like that took 30 minutes and two new plans: stairs it couldn't craft for lack of
+planks, then 12 birch planks short at the build.
+
+![Claude-planned survival run, the finished farmhouse](docs/survival-claude.png)
+
 ## Demo video
 
 ```bash
@@ -122,6 +152,14 @@ in Edge with Playwright and records it, plus a timelapse GIF made from screensho
   started serving a copy of its worker with that check fixed.
 - **A dandelion in the way.** Flowers have no hitbox, but the server won't place a block over them, so the bot
   breaks plants before placing.
+- **Stone in a hole.** In the survival world the nearest bare stone was at the bottom of a pit 33 blocks away:
+  the drops fell in and the pathfinder gave up. Now, when no exposed stone is close, the bot digs a staircase
+  down like a player would (never the block under its feet, stops at water, lava or a cave). 31 stone in 3 minutes
+  instead of 10 lost.
+- **Logs stuck in the leaves.** Branch logs sit on leaves, so their drop lands up in the canopy where the bot
+  can't get it. It skips branches now, and stops with a clear error if several logs in a row give nothing.
+- **No flat ground in a normal world.** The house needs a 9 x 5 flat spot. The bot picks the cheapest nearby
+  spot and levels it like a player: digs the bumps, fills one-block holes with dirt, and won't touch trees or water.
 - **An accent in the user folder.** On Windows, Java opens a Unix socket in the temp folder when it starts
   the network code. With a path like `C:\Users\Usuário` that fails with `Invalid argument: connect` and the
   server crashes. The fix is to point that socket to a folder without accents.
