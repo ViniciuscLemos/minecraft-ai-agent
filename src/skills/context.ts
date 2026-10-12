@@ -37,25 +37,63 @@ const WALK_TIMEOUT = 60_000;
  * up after `timeoutMs`: the pathfinder can keep finding an empty "partial" path forever (an
  * item in a one-block hole kept it busy for ten minutes, a tree once for forty).
  */
+const BUILT = /planks|stairs|slab|glass|door|cobblestone|_log$|torch|chest|fence|lantern/;
+
 export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Goal>, where: string, timeoutMs = WALK_TIMEOUT) {
   checkAborted(ctx);
   const onAbort = () => ctx.bot.pathfinder.stop();
   ctx.signal.addEventListener('abort', onAbort, { once: true });
   let timedOut = false;
+  let giveUp = () => {};
+  let hardStop: NodeJS.Timeout | undefined;
+  // pathfinder.stop() waits for the dig in progress, and a dig the server never finishes
+  // never ends: a Claude-planned run sat 15 min in "digging my way out to the sand". So the
+  // deadline also drops the goal and the dig, and stops waiting for goto a bit later.
+  const deadline = new Promise<never>((_, reject) => (giveUp = () => reject(new Error('timeout'))));
+  deadline.catch(() => {});
   const timer = setTimeout(() => {
     timedOut = true;
     ctx.bot.pathfinder.stop();
+    ctx.bot.stopDigging();
+    hardStop = setTimeout(() => {
+      ctx.bot.pathfinder.setGoal(null);
+      giveUp();
+    }, 5000);
   }, timeoutMs);
+  const start = ctx.bot.entity.position.clone();
+  const movements = ctx.bot.pathfinder.movements;
+  const couldDig = movements.canDig;
   try {
     for (let attempt = 1; ; attempt++) {
       // right after a teleport or a respawn the chunks around it are still arriving, and
       // with no ground loaded the pathfinder thinks it can't take a single step
       await ctx.bot.waitForChunksToLoad();
       try {
-        await ctx.bot.pathfinder.goto(goal);
+        await Promise.race([ctx.bot.pathfinder.goto(goal), deadline]);
         // goto sometimes resolves right away without moving (seen right after a dig, going
         // for the logs under a trunk): checked, and one more go if it isn't really there
-        if (goal.isEnd(ctx.bot.entity.position.floored() as never) || attempt >= 3) return;
+        if (goal.isEnd(ctx.bot.entity.position.floored() as never)) return;
+        if (attempt >= 3) {
+          // goto also "succeeds" when the pathfinder found no path at all (an empty path
+          // counts as done in mineflayer-pathfinder). Close enough is fine, but a bot that
+          // never left its spot is stuck: two survival runs froze like that and "chopped"
+          // logs 15 blocks away for minutes
+          const here = ctx.bot.entity.position.floored();
+          // a bump right next to it or an item on the leaves above: as before, the skill
+          // carries on from here (and checks its own reach)
+          if (ctx.bot.entity.position.distanceTo(start) >= 1 || goal.heuristic(here as never) <= 3) return;
+          // walled in (seen right after crafting: table and furnace next to it): one more go
+          // where the pathfinder may break blocks, like a player digging out
+          if (movements.canDig) throw new SkillError(`I can't find a way to ${where}.`);
+          ctx.log(`I'm boxed in, digging my way out to ${where}`);
+          movements.canDig = true;
+          // never through something it built (the box can be the house it is building)
+          for (const block of ctx.bot.registry.blocksArray) {
+            if (BUILT.test(block.name)) movements.blocksCantBreak.add(block.id);
+          }
+          attempt = 0;
+          continue;
+        }
       } catch (error) {
         checkAborted(ctx);
         if (timedOut) throw new SkillError(`It's taking too long to get to ${where}.`);
@@ -68,7 +106,10 @@ export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Go
       }
     }
   } finally {
+    movements.canDig = couldDig;
     clearTimeout(timer);
+    // a walk that stopped on its own must not have the next walk's goal dropped later
+    clearTimeout(hardStop);
     ctx.signal.removeEventListener('abort', onAbort);
   }
 }
