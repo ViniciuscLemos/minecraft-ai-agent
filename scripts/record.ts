@@ -132,7 +132,18 @@ export function pageSetup({ center, title, subtitle }: { center?: Point } & Pane
       // every pathfinder stop logs one of these; in a video they bury the lines that matter
       if (text.startsWith('arrived at')) return;
       const line = document.createElement('div');
-      line.textContent = '> ' + text;
+      // plans and failures are what a viewer should catch at a glance, and the reason at
+      // the end of a step line reads better a bit dimmer than the step itself
+      if (/^(new )?plan:/.test(text)) line.style.color = '#8fd3ff';
+      else if (/failed|giving up/.test(text)) line.style.color = '#ff9a8f';
+      const why = /^(step \d+\/\d+: .*?) (\(.*\))$/.exec(text);
+      line.textContent = '> ' + (why ? why[1] : text);
+      if (why) {
+        const reason = document.createElement('span');
+        reason.textContent = ' ' + why[2];
+        reason.style.opacity = '.6';
+        line.appendChild(reason);
+      }
       log.appendChild(line);
       while (log.childNodes.length > 9) log.removeChild(log.firstChild!);
     };
