@@ -3,7 +3,7 @@
 import pathfinderPkg from 'mineflayer-pathfinder';
 import { Vec3 } from 'vec3';
 import { checkAborted, countItem, isLog, isPlanks, SkillError, sleep, walk, type SkillContext } from './context.ts';
-import { blockNames, canReach, onlyMobInTheWay, placeAt, type Facing } from './place.ts';
+import { blockNames, canReach, isTall, onlyMobInTheWay, placeAt, type Facing } from './place.ts';
 import { levelSite, nearbyCorners, planSite, siteWork, type SitePlan } from './site.ts';
 
 const { goals } = pathfinderPkg;
@@ -285,13 +285,15 @@ export async function build(ctx: SkillContext, name: string, origin?: Vec3, pale
     const index = nextBlock(ctx, todo);
     if (index === -1) throw new SkillError(`I can't figure out how to place the rest of the ${blueprint.name}.`);
     const [block] = todo.splice(index, 1);
-    await standFor(ctx, block!.pos, corner, blueprint);
+    await standFor(ctx, block!.pos, corner, blueprint, block!.material);
     const item = bot.inventory.items().find((it) => matches(block!.material)(it.name));
     if (!item) throw new SkillError(`I ran out of ${block!.material} halfway through.`);
     // in a normal world sheep and pigs walk into the half-built house; that block waits
     // for later instead of the whole build stopping
     const key = block!.pos.toString();
-    if (onlyMobInTheWay(ctx, block!.pos) && (waited.get(key) ?? 0) < 10) {
+    const mobInTheWay =
+      onlyMobInTheWay(ctx, block!.pos) || (isTall(block!.material) && onlyMobInTheWay(ctx, block!.pos.offset(0, 1, 0)));
+    if (mobInTheWay && (waited.get(key) ?? 0) < 10) {
       waited.set(key, (waited.get(key) ?? 0) + 1);
       todo.push(block!);
       await sleep(500);
@@ -392,17 +394,20 @@ function contains(corner: Vec3, blueprint: Blueprint, pos: Vec3, margin = 0) {
  * walls when that's in reach, otherwise inside, under the roof (the top of the roof is
  * too high to reach from the ground outside).
  */
-async function standFor(ctx: SkillContext, pos: Vec3, corner: Vec3, blueprint: Blueprint) {
+async function standFor(ctx: SkillContext, pos: Vec3, corner: Vec3, blueprint: Blueprint, material?: string) {
   const { bot } = ctx;
   const here = bot.entity.position;
   const insideNow = contains(corner, blueprint, here.floored());
   const roofLevel = pos.y - corner.y >= (blueprint.floorY ?? 0) + 3;
-  if (canReach(here, pos) && !inTheWay(here, pos) && (!insideNow || roofLevel)) return;
+  // a door fills the block above as well, so the bot can't stand in either
+  const tall = material !== undefined && isTall(material);
+  const blocked = (feet: Vec3) => inTheWay(feet, pos) || (tall && inTheWay(feet, pos.offset(0, 1, 0)));
+  if (canReach(here, pos) && !blocked(here) && (!insideNow || roofLevel)) return;
 
   const free = (s: Vec3) =>
     bot.blockAt(s)?.boundingBox === 'empty' && bot.blockAt(s.offset(0, 1, 0))?.boundingBox === 'empty';
   const spots = [outsideSpot(pos, corner, blueprint), ...insideSpots(pos, corner, blueprint)].filter(free);
-  const spot = spots.find((s) => canReach(s.offset(0.5, 0, 0.5), pos) && !inTheWay(s.offset(0.5, 0, 0.5), pos));
+  const spot = spots.find((s) => canReach(s.offset(0.5, 0, 0.5), pos) && !blocked(s.offset(0.5, 0, 0.5)));
   if (!spot) throw new SkillError(`I can't find a place to stand to reach ${pos.x} ${pos.y} ${pos.z}.`);
   if (here.floored().equals(spot)) return;
   await walk(ctx, new goals.GoalBlock(spot.x, spot.y, spot.z), 'a spot next to the house');

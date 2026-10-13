@@ -78,6 +78,12 @@ export async function placeAt(ctx: SkillContext, itemName: string, pos: Vec3, fa
   const existing = bot.blockAt(pos);
   if (existing && blockNames(itemName).includes(existing.name)) return existing;
   if (!isFree(ctx, pos)) throw new SkillError(`${inTheSpot(ctx, pos)} is already at ${pos.x} ${pos.y} ${pos.z}.`);
+  // a door (or a bed, a tall flower...) takes the block above too, and the server refuses it
+  // if anyone stands there: the farmhouse door kept failing with a sheep in the doorway
+  if (isTall(itemName) && !isFree(ctx, pos.offset(0, 1, 0))) {
+    const above = pos.offset(0, 1, 0);
+    throw new SkillError(`${inTheSpot(ctx, above)} is already at ${above.x} ${above.y} ${above.z}.`);
+  }
 
   const face = FACES.find((dir) => bot.blockAt(pos.plus(dir))?.boundingBox === 'block');
   if (!face) throw new SkillError(`Nothing to put the ${itemName} against at ${pos.x} ${pos.y} ${pos.z}.`);
@@ -140,6 +146,8 @@ async function becomes(ctx: SkillContext, pos: Vec3, name: string) {
 }
 
 /** Air (or grass and the like) with no player or mob standing in it. */
+export const isTall = (itemName: string) => /_door$|^tall_|_bed$/.test(itemName);
+
 function isFree(ctx: SkillContext, pos: Vec3) {
   return inTheSpot(ctx, pos) === undefined;
 }

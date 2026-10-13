@@ -133,3 +133,13 @@ describe('farmhouse blueprint', () => {
     });
   });
 });
+
+describe('tall blocks', () => {
+  it('knows which items take the block above too', async () => {
+    const { isTall } = await import('../src/skills/place.ts');
+    expect(isTall('spruce_door')).toBe(true);
+    expect(isTall('red_bed')).toBe(true);
+    expect(isTall('oak_planks')).toBe(false);
+    expect(isTall('torch')).toBe(false);
+  });
+});
