@@ -63,6 +63,10 @@ export function planFor(wanted: Map<string, number>, inventory: Map<string, numb
   const stock = new Map(inventory);
   const order: string[] = []; // items in the order their steps run
   const totals = new Map<string, number>(); // how many of each item the steps make
+  // mine swaps the wooden pickaxe for a stone one as soon as it has 3 cobblestone, so
+  // those 3 (and 2 sticks) go on top of what the build needs, once
+  const betterPickaxe = [...inventory].some(([name, n]) => n > 0 && /^(stone|iron|golden|diamond|netherite)_pickaxe$/.test(name));
+  let stonePickaxe = betterPickaxe;
 
   // count 0 means a tool or station: one, unless we have it or a step already makes it
   const need = (item: string, count: number) => {
@@ -77,6 +81,7 @@ export function planFor(wanted: Map<string, number>, inventory: Map<string, numb
     if (missing <= 0) return;
     const recipe = recipeFor(item, fuelWood);
     let made = missing;
+    let eaten = 0; // made but used up along the way, not left for later steps
     if (recipe) {
       const batches = Math.ceil(missing / recipe.makes);
       made = batches * recipe.makes;
@@ -87,11 +92,16 @@ export function planFor(wanted: Map<string, number>, inventory: Map<string, numb
       }
       for (const [ingredient, per] of Object.entries(recipe.from)) need(ingredient, per * batches);
     } else if (item === 'cobblestone') {
-      need('wooden_pickaxe', 0);
+      if (!betterPickaxe) need('wooden_pickaxe', 0);
+      if (!stonePickaxe) {
+        stonePickaxe = true;
+        need('stick', 2);
+        eaten = 3;
+      }
     }
     // leftovers from a batch (4 planks from a log when we wanted 2) count for later steps
     stock.set(item, (stock.get(item) ?? 0) + made - missing);
-    totals.set(item, (totals.get(item) ?? 0) + made);
+    totals.set(item, (totals.get(item) ?? 0) + made + eaten);
     if (!order.includes(item)) order.push(item);
   };
 

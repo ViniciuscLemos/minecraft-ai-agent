@@ -14,7 +14,14 @@ describe('planFor', () => {
   it('mines stone for cobblestone, with a pickaxe made first', () => {
     const steps = skills(planFor(new Map([['cobblestone', 10]])));
     expect(steps.indexOf('craft wooden_pickaxe 1')).toBeGreaterThan(-1);
-    expect(steps.indexOf('craft wooden_pickaxe 1')).toBeLessThan(steps.indexOf('mine stone 10'));
+    expect(steps.indexOf('craft wooden_pickaxe 1')).toBeLessThan(steps.indexOf('mine stone 13'));
+  });
+
+  it('mines 3 more cobblestone for the stone pickaxe mine makes on the way', () => {
+    expect(skills(planFor(new Map([['furnace', 1]])))).toContain('mine stone 11');
+    const withPickaxe = skills(planFor(new Map([['furnace', 1]]), new Map([['stone_pickaxe', 1]])));
+    expect(withPickaxe).toContain('mine stone 8');
+    expect(withPickaxe).not.toContain('craft wooden_pickaxe 1');
   });
 
   it('smelts sand into glass for panes, in a furnace it makes', () => {
