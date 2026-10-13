@@ -5,6 +5,7 @@ import type { Block } from 'prismarine-block';
 import { checkAborted, countItem, goNear, isLog, isPlanks, pickUpDrops, sleep, SkillError, type SkillContext } from './context.ts';
 import { craft } from './craft.ts';
 import { placeNear } from './place.ts';
+import { reservedOf, spareInventory } from './reserve.ts';
 import { equipBestTool } from './tools.ts';
 
 const FURNACE_RADIUS = 24;
@@ -54,7 +55,9 @@ export async function smelt(ctx: SkillContext, input: string, amount: number) {
   if (have < amount) throw new SkillError(`I need ${amount - have} more ${name} to smelt.`);
 
   // fuel is picked before anything else, so the logs it burns aren't the ones it needs
-  const fuel = chooseFuel(bot.inventory.items().filter((it) => it.name !== name), amount);
+  // and it burns what isn't set aside for a build first, everything only if that's not enough
+  const others = bot.inventory.items().filter((it) => it.name !== name);
+  const fuel = chooseFuel(spareInventory(others, reservedOf(bot)), amount) ?? chooseFuel(others, amount);
   if (!fuel) throw new SkillError(`I have nothing to burn: I need coal, logs or planks.`);
 
   const { block: furnaceBlock, placed } = await getFurnace(ctx);

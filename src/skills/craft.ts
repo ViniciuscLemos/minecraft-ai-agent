@@ -4,6 +4,7 @@ import type { Bot } from 'mineflayer';
 import type { Block } from 'prismarine-block';
 import type { Recipe } from 'prismarine-recipe';
 import { checkAborted, countItem, goNear, isLog, isPlanks, SkillError, type SkillContext } from './context.ts';
+import { reservedOf, spare } from './reserve.ts';
 import { craftOnce, TableError } from './grid.ts';
 import { canReach, placeNear } from './place.ts';
 
@@ -26,10 +27,10 @@ export async function craft(ctx: SkillContext, name: string, amount = 1, depth =
 
     // the 2x2 grid in the inventory first, then a crafting table
     let table: Block | null = null;
-    let recipe = bot.recipesFor(item.id, null, 1, null)[0];
+    let recipe = leastReserved(bot, bot.recipesFor(item.id, null, 1, null));
     if (!recipe && needsTable(bot, item.id)) {
       table = await getTable(ctx, depth, newTable);
-      recipe = bot.recipesFor(item.id, null, 1, table)[0];
+      recipe = leastReserved(bot, bot.recipesFor(item.id, null, 1, table));
     }
 
     if (!recipe) {
@@ -127,9 +128,30 @@ export function resolveItem(bot: Bot, name: string) {
   return item;
 }
 
-/** The planks matching the logs it carries, oak when it has none. */
+/**
+ * Of the recipes it can afford, the one that eats the fewest reserved materials: a crafting
+ * table from oak planks rather than from the birch ones the walls need.
+ */
+export function leastReserved(bot: Bot, recipes: Recipe[]): Recipe | undefined {
+  const reserved = reservedOf(bot);
+  if (!reserved.size) return recipes[0];
+  const items = bot.inventory.items();
+  const cost = (recipe: Recipe) =>
+    recipe.delta
+      .filter((step) => step.count < 0)
+      .reduce((sum, step) => {
+        const name = bot.registry.items[step.id]!.name;
+        return sum + Math.max(0, -step.count - spare(items, reserved, name));
+      }, 0);
+  return [...recipes].sort((a, b) => cost(a) - cost(b))[0];
+}
+
+/** The planks matching the logs it carries (the ones it can spare first), oak when it has none. */
 export function plankFor(bot: Bot) {
-  const log = bot.inventory.items().find((item) => isLog(item.name));
+  const items = bot.inventory.items();
+  const reserved = reservedOf(bot);
+  const logs = items.filter((item) => isLog(item.name));
+  const log = logs.sort((a, b) => spare(items, reserved, b.name) - spare(items, reserved, a.name))[0];
   const planks = log ? log.name.replace(/_log$/, '_planks') : 'oak_planks';
   return bot.registry.itemsByName[planks] ? planks : 'oak_planks';
 }
