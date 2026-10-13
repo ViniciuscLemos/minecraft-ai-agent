@@ -47,7 +47,7 @@ export async function walk(ctx: SkillContext, goal: InstanceType<typeof goals.Go
   let giveUp = () => {};
   let hardStop: NodeJS.Timeout | undefined;
   // pathfinder.stop() waits for the dig in progress, and a dig the server never finishes
-  // never ends: a Claude-planned run sat 15 min in "digging my way out to the sand". So the
+  // never ends: an AI-planned run sat 15 min in "digging my way out to the sand". So the
   // deadline also drops the goal and the dig, and stops waiting for goto a bit later.
   const deadline = new Promise<never>((_, reject) => (giveUp = () => reject(new Error('timeout'))));
   deadline.catch(() => {});

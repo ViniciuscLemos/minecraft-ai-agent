@@ -12,7 +12,7 @@ An AI agent that plays Minecraft with you on your own server. The goal: you type
 It's being built in stages. Right now the bot follows you, obeys chat commands and has tested skills:
 it chops trees, crafts (tables, tools, glass panes...), mines, smelts in a furnace it makes itself and
 builds houses from blueprints (the farmhouse above: foundation, log frame, windows, a stair roof,
-a chimney, torches and furniture). The AI part (Claude planning and replanning) comes on top of that.
+a chimney, torches and furniture). The AI part (planning and replanning from plain text) comes on top of that.
 
 ## Why I built it
 
@@ -30,7 +30,7 @@ getting stuck on a fence. So the design keeps the AI away from the fiddly parts.
 | --- | --- | --- |
 | Reflexes | safe pathfinding, eating, armor, fight or flee, nighttime, getting unstuck | plain code, always on |
 | Skills | collect wood, mine, craft, build... each one checks what it needs first and fails with a clear reason | plain code, tested |
-| Planner | turns your request into a list of skills and replans when one fails | Claude (tool use) |
+| Planner | turns your request into a list of skills and replans when one fails | an AI model (structured output) |
 
 The AI never moves the bot block by block. It only picks skills, and the skills are tested on a real
 server, so a bad plan fails safely instead of walking the bot into lava.
@@ -39,7 +39,7 @@ server, so a bad plan fails safely instead of walking the bot into lava.
 
 - [x] **Stage 1:** local server setup, bot that follows you and obeys chat commands, scenario tests on a real server
 - [x] **Stage 2:** skills (wood, crafting, mining, smelting, building) and reflexes (eating, getting unstuck, deaths), each tested on a real server
-- [ ] **Stage 3/4:** Claude plans and replans from plain text requests (`!do` works; next: a longer test on a real server)
+- [ ] **Stage 3/4:** the AI plans and replans from plain text requests (`!do` works; next: a longer test on a real server)
 - [ ] **Stage 5:** web panel with a 3D view of what the bot sees and its reasoning log
 - [ ] **Stage 6:** demo video
 
@@ -71,21 +71,21 @@ Then open Minecraft 1.21.1, join `localhost` and type in the chat:
 | `!craft <item> [n]` | crafts something, making the table, planks and sticks it needs on the way |
 | `!mine <block> [n]` | mines blocks it can see, and says which tool is missing if it can't |
 | `!build <farmhouse\|cottage\|house\|hut>` | builds next to it, and lists the missing materials if it can't |
-| `!do <anything>` | asks in plain words, like `!do make a furnace`: Claude plans the steps, the bot runs them |
+| `!do <anything>` | asks in plain words, like `!do make a furnace`: the AI plans the steps, the bot runs them |
 
 Settings like the bot name and who can give it orders go in `.env` (see `.env.example`).
 
 ### How `!do` works
 
-The bot sends Claude the request, its inventory, the trees and blocks around it and the list of skills
+The bot sends the AI the request, its inventory, the trees and blocks around it and the list of skills
 (the same ones the commands above use), and gets back a list of steps as JSON, checked against the skills
-before anything runs. If a step fails, the error goes back to Claude with what already worked and it
+before anything runs. If a step fails, the error goes back to it with what already worked and it
 plans the rest. `!do make a furnace` with empty pockets came back in about 7 seconds as: chop 4 oak logs,
 craft a wooden pickaxe, mine 8 stone, craft the furnace.
 
-It calls the [Claude Code](https://claude.com/claude-code) CLI in headless mode (`claude -p`, Sonnet, no
-tools), so it runs on the Claude plan you're logged into and doesn't need an API key: install it and log
-in once. One plan is one call. With `PLANNER=scripted` it skips Claude and only knows how to build
+It runs an AI assistant's command-line program in headless mode (set `AI_CLI` in `.env`; no tools, JSON
+output checked against a schema), so it uses the account you're logged into there and doesn't need an API
+key. One plan is one call. With `PLANNER=scripted` it skips the AI and only knows how to build
 things from scratch (the survival plan below).
 
 ## Tests
@@ -104,7 +104,7 @@ world: where it ends up, what's in its inventory, which blocks it placed. They r
 npm run survival                   # empty pockets to finished farmhouse, in a normal world
 npm run survival -- --record       # same, filmed: a 30x timelapse (.webm), a GIF and a picture of the house
 npm run survival -- --build-only   # hands over the materials and only builds
-npm run survival -- --planner claude   # Claude writes the plan (and a new one when a step fails)
+npm run survival -- --planner ai       # the AI writes the plan (and a new one when a step fails)
 ```
 
 This is the long test: a normal world (seed 8675309, oak and birch trees, stone and a beach near spawn),
@@ -120,13 +120,13 @@ the walls need, so it sometimes comes back for a few more logs). By default the 
 
 ![Timelapse of a scripted survival run, from the first log to the farmhouse](docs/survival.gif)
 
-With `--planner claude` the same run is planned by Claude instead: it gets the request ("build a
+With `--planner ai` the same run is planned by the AI instead: it gets the request ("build a
 farmhouse"), the inventory, the trees and blocks around, the skill list and the house's bill of
 materials, and answers with the steps. When a step fails it gets the error and plans the rest. The
 first full run like that took 30 minutes and two new plans: stairs it couldn't craft for lack of
 planks, then 12 birch planks short at the build.
 
-![Claude-planned survival run, the finished farmhouse](docs/survival-claude.png)
+![AI-planned survival run, the finished farmhouse](docs/survival-ai.png)
 
 ## Demo video
 

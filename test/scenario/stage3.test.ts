@@ -1,6 +1,6 @@
 // Stage 3 against a real server: a request goes through a planner, the steps run as
 // skills, and a step that fails goes back to the planner with the error. The planner here
-// is a fake with fixed answers: the real one (claude -p) never runs in tests or CI.
+// is a fake with fixed answers: the real one (the AI's CLI) never runs in tests or CI.
 import type { Bot } from 'mineflayer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Vec3 } from 'vec3';
@@ -21,7 +21,7 @@ beforeAll(async () => {
   server = await startServer(PORT);
   owner = await joinPlayer('Tester', PORT);
   const greeting = nextChat(owner, BOT, /!help/);
-  // the chat test below needs the planner that works without Claude
+  // the chat test below needs the planner that works without AI
   agent = createAgentBot({ host: 'localhost', port: PORT, version: VERSION, username: BOT, owners: ['Tester'], planner: 'scripted' });
   await greeting;
   server.command(`tp ${BOT} 0 -60 0`);
@@ -63,7 +63,7 @@ class FakePlanner implements Planner {
 }
 
 describe('requests', () => {
-  it('replans with the error when a step fails, like Claude asking for cobblestone blocks', async () => {
+  it('replans with the error when a step fails, like the AI asking for cobblestone blocks', async () => {
     server.command(`give ${BOT} minecraft:wooden_pickaxe`);
     server.command('fill 3 -60 -5 5 -60 -5 minecraft:stone');
     await waitFor(() => countItem(agent, (name) => name === 'wooden_pickaxe') === 1, 'the pickaxe to arrive');
@@ -93,9 +93,9 @@ describe('requests', () => {
     expect(planner.failures).toHaveLength(1);
   }, 120_000);
 
-  it('answers a !do it cannot plan without Claude', async () => {
+  it('answers a !do it cannot plan without the AI', async () => {
     const reply = nextChat(owner, BOT, /only build/);
     owner.chat(`!do go fishing`);
-    expect(await reply).toMatch(/Without Claude I can only build things/);
+    expect(await reply).toMatch(/Without the AI planner I can only build things/);
   });
 });

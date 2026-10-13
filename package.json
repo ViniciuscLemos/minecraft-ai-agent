@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:scenario": "vitest run --config vitest.scenario.config.ts",
     "demo": "node scripts/demo.ts",
-    "survival": "node scripts/survival.ts"
+    "survival": "node --env-file-if-exists=.env scripts/survival.ts"
   },
   "license": "MIT",
   "type": "module",

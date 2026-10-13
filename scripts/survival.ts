@@ -6,9 +6,9 @@
 //                                      testing the last step without 15 minutes of chopping)
 //   npm run survival -- --record       also films it: docs/survival.webm (a 30x timelapse),
 //                                      docs/survival.gif and docs/survival.png (the house)
-//   npm run survival -- --planner claude   Claude plans it (and replans every failed step)
-//                                      instead of the scripted plan; each plan is one
-//                                      `claude -p` call on your Claude plan
+//   npm run survival -- --planner ai   the AI planner plans it (and replans every failed
+//                                      step) instead of the scripted plan; each plan is
+//                                      one call to the CLI in AI_CLI
 //   npm run survival -- --probe        debug output when a skill sees no items
 //
 // By default the plan comes from src/plans/survival.ts (scripted, no AI). The world is
@@ -16,7 +16,7 @@
 import { createAgentBot } from '../src/bot.ts';
 import { runPlan } from '../src/plans/run.ts';
 import { survivalPlan } from '../src/plans/survival.ts';
-import { ClaudeCliPlanner } from '../src/planner/claude-cli.ts';
+import { CliPlanner } from '../src/planner/cli.ts';
 import { carryOut } from '../src/planner/index.ts';
 import { worldState } from '../src/planner/state.ts';
 import { woodsNearby } from '../src/skills/wood.ts';
@@ -86,19 +86,19 @@ async function main() {
     });
     if (process.argv.includes('--probe')) probeItems(bot);
     const ctx = { bot, signal: abort.signal, log };
-    const useClaude = process.argv[process.argv.indexOf('--planner') + 1] === 'claude';
+    const useAi = process.argv[process.argv.indexOf('--planner') + 1] === 'ai';
     let result;
-    if (useClaude) {
-      // the same loop as `!do`: plan, run, and on a failed step send Claude the error and
+    if (useAi) {
+      // the same loop as `!do`: plan, run, and on a failed step send the planner the error and
       // the inventory for a new plan
       const request = process.argv.includes('--build-only') ? 'build a farmhouse with what you have' : 'build a farmhouse';
-      result = await carryOut(ctx, new ClaudeCliPlanner(), request, () => worldState(bot), { replans: 4 });
+      result = await carryOut(ctx, new CliPlanner(), request, () => worldState(bot), { replans: 4 });
     } else result = await runPlan(ctx, steps);
     // the fuel for the furnace comes out of the same planks and logs the house needs, so it
     // can get to the build a few short; a fresh plan from what it has fills the gap (the
     // same thing the AI planner will do with any failed step)
     // each round can come up a few blocks short again (a crafting table made of the wall planks...)
-    for (let round = 1; !useClaude && !result.ok && !abort.signal.aborted && round <= 4; round++) {
+    for (let round = 1; !useAi && !result.ok && !abort.signal.aborted && round <= 4; round++) {
       const have = new Map<string, number>();
       for (const item of bot.inventory.items()) have.set(item.name, (have.get(item.name) ?? 0) + item.count);
       log(`step ${result.failed.index + 1} failed (${result.failed.error}), planning again from what I have`);
@@ -121,8 +121,8 @@ async function main() {
         await viewer.page.evaluate((s) => ((window as any).__still = s), clearestShot(bot, house));
         await sleep(1500);
       } else await sleep(8000);
-      // a Claude-planned run keeps its own files, so it doesn't replace the scripted one
-      const name = (useClaude ? 'survival-claude' : 'survival') + (result.ok ? '' : '-failed');
+      // an AI-planned run keeps its own files, so it doesn't replace the scripted one
+      const name = (useAi ? 'survival-ai' : 'survival') + (result.ok ? '' : '-failed');
       await viewer.page.screenshot({ path: path.join(OUT, `${name}.png`) });
       const { shots } = await timelapse.stop(path.join(OUT, `${name}.gif`));
       renameSync(path.join(OUT, 'survival-run.webm'), path.join(OUT, `${name}.webm`));

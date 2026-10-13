@@ -6,7 +6,7 @@ import pathfinderPkg from 'mineflayer-pathfinder';
 import { canCommand, HELP, parseCommand, type Command } from './commands.ts';
 import type { Config } from './config.ts';
 import { addReflexes } from './reflexes.ts';
-import { ClaudeCliPlanner } from './planner/claude-cli.ts';
+import { CliPlanner } from './planner/cli.ts';
 import { carryOut, PlanError, type Planner } from './planner/index.ts';
 import { ScriptedPlanner } from './planner/scripted.ts';
 import { worldState } from './planner/state.ts';
@@ -68,7 +68,7 @@ export function createAgentBot(config: Config): Bot {
   bot.on('kicked', (reason) => log(bot, `kicked: ${JSON.stringify(reason)}`));
   bot.on('error', (error) => log(bot, `error: ${error.message}`));
 
-  planners.set(bot, config.planner === 'scripted' ? new ScriptedPlanner() : new ClaudeCliPlanner());
+  planners.set(bot, config.planner === 'scripted' ? new ScriptedPlanner() : new CliPlanner());
   return bot;
 }
 
@@ -119,7 +119,7 @@ async function runTask(bot: Bot, label: string, work: (ctx: SkillContext) => Pro
     return controller.signal.aborted ? 'Stopped.' : say(bot, result);
   } catch (error) {
     if (controller.signal.aborted) return 'Stopped.';
-    // a plan Claude got wrong is reported like a skill that couldn't do its job
+    // a plan the planner got wrong is reported like a skill that couldn't do its job
     if (error instanceof SkillError || error instanceof PlanError) return say(bot, error.message);
     log(bot, `${label} crashed: ${(error as Error).stack}`);
     return say(bot, `Something went wrong: ${(error as Error).message}`);

@@ -11,4 +11,4 @@ coverage/
 docs/*.webm
 .survival-server/
 docs/survival-failed.*
-docs/survival-claude-failed.*
+docs/survival-ai-failed.*

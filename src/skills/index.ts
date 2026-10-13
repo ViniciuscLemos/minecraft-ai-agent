@@ -17,7 +17,7 @@ type Args = Record<string, unknown>;
 export interface Skill {
   name: string;
   description: string;
-  // JSON Schema of the arguments (the format Claude's tool use expects)
+  // JSON Schema of the arguments (the format AI tool use expects)
   input: { type: 'object'; properties: Record<string, object>; required?: string[] };
   run(ctx: SkillContext, args: Args): Promise<string>;
 }

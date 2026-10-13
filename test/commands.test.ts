@@ -70,7 +70,7 @@ describe('canCommand', () => {
 
 describe('loadConfig', () => {
   it('has defaults for the local server', () => {
-    expect(loadConfig({})).toEqual({ host: 'localhost', port: 25565, version: '1.21.1', username: 'Steve_AI', owners: [], planner: 'claude' });
+    expect(loadConfig({})).toEqual({ host: 'localhost', port: 25565, version: '1.21.1', username: 'Steve_AI', owners: [], planner: 'ai' });
   });
 
   it('reads the owner list and rejects bad values', () => {

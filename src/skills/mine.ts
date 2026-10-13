@@ -103,7 +103,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
           restarts++;
           ctx.log(`${error.message} Trying somewhere else.`);
           // from the bottom of the stairs every way out goes through water or rock, and the
-          // pathfinder gave up there in a Claude-planned run; the stairs it just dug always
+          // pathfinder gave up there in an AI-planned run; the stairs it just dug always
           // lead back up
           if (stairTop) await climbBack(ctx, stairTop);
           await moveAway(ctx);
@@ -149,7 +149,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
     // to; trying them one by one took the whole morning, digging down is quicker
     const giveUpOn = (pos: Vec3) => {
       skipped.add(pos.toString());
-      // sand and gravel have no stairs to fall back on: a Claude-planned run walked from
+      // sand and gravel have no stairs to fall back on: an AI-planned run walked from
       // one beach block to the next for 15 minutes from the bottom of a mine, without a word.
       // Better to say so and let the planner pick something else.
       if (!underground && failedWalks + 1 >= MAX_FAILED_WALKS) {

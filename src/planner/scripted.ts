@@ -1,6 +1,6 @@
 // Planner backend without any AI: it only knows how to get a structure built from
 // scratch (src/plans/survival.ts), and replans by running the same calculation on what
-// the bot has now. It's what the survival run uses, and the fallback with no Claude around.
+// the bot has now. It's what the survival run uses, and the fallback with no AI around.
 import { survivalPlan } from '../plans/survival.ts';
 import { BLUEPRINTS } from '../skills/build.ts';
 import { PlanError, type Planner, type WorldState } from './index.ts';
@@ -12,7 +12,7 @@ export class ScriptedPlanner implements Planner {
   async plan(request: string, state: WorldState) {
     const structure = structureIn(request);
     if (!structure) {
-      throw new PlanError(`Without Claude I can only build things (${Object.keys(BLUEPRINTS).join(', ')}).`);
+      throw new PlanError(`Without the AI planner I can only build things (${Object.keys(BLUEPRINTS).join(', ')}).`);
     }
     return survivalPlan(structure, new Map(Object.entries(state.inventory)), undefined, state.woods);
   }

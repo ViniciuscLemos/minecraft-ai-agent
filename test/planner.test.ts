@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cliArgs, ClaudeCliPlanner, findClaude, parseAnswer } from '../src/planner/claude-cli.ts';
+import { cliArgs, CliPlanner, parseAnswer } from '../src/planner/cli.ts';
 import { carryOut, PlanError, requestPrompt, validateSteps, type Planner, type Step, type WorldState } from '../src/planner/index.ts';
 import { ScriptedPlanner, structureIn } from '../src/planner/scripted.ts';
 import type { PlanResult } from '../src/plans/run.ts';
@@ -12,7 +12,7 @@ const state: WorldState = {
   woods: ['oak', 'birch'],
 };
 
-// an answer as `claude -p --output-format json` gives it (trimmed), recorded on 09/10
+// an answer as the CLI gives it with `-p --output-format json` (trimmed), recorded on 09/10
 const recorded = JSON.stringify({
   type: 'result',
   is_error: false,
@@ -70,10 +70,11 @@ describe('requestPrompt', () => {
   });
 });
 
-describe('claude-cli backend', () => {
-  it('asks for a structured answer with no tools, on sonnet', () => {
-    const args = cliArgs('hi');
-    expect(args.slice(0, 4)).toEqual(['-p', 'hi', '--model', 'sonnet']);
+describe('cli backend', () => {
+  it('asks for a structured answer with no tools, on the model it was given', () => {
+    const args = cliArgs('hi', 'light');
+    expect(args.slice(0, 4)).toEqual(['-p', 'hi', '--model', 'light']);
+    expect(cliArgs('hi')).not.toContain('--model');
     expect(args[args.indexOf('--tools') + 1]).toBe('');
     expect(JSON.parse(args[args.indexOf('--json-schema') + 1]!).required).toEqual(['steps']);
   });
@@ -89,8 +90,8 @@ describe('claude-cli backend', () => {
 
   it('runs the binary it was given and passes the failure on a replan', async () => {
     const calls: { bin: string; prompt: string }[] = [];
-    const planner = new ClaudeCliPlanner({
-      bin: 'fake-claude',
+    const planner = new CliPlanner({
+      bin: 'fake-cli',
       run: async (bin, args) => {
         calls.push({ bin, prompt: args[1]! });
         return recorded;
@@ -98,13 +99,15 @@ describe('claude-cli backend', () => {
     });
     await planner.plan('make a furnace', state);
     await planner.replan('make a furnace', state, { step: { skill: 'mine', args: {}, why: '' }, error: 'Too far.', done: [] });
-    expect(calls.map((c) => c.bin)).toEqual(['fake-claude', 'fake-claude']);
+    expect(calls.map((c) => c.bin)).toEqual(['fake-cli', 'fake-cli']);
     expect(calls[1]!.prompt).toContain('Too far.');
   });
 
-  it('takes CLAUDE_BIN over anything it would find', () => {
-    expect(findClaude({ CLAUDE_BIN: 'C:/tools/claude.exe' })).toBe('C:/tools/claude.exe');
-    expect(findClaude({})).toBe('claude');
+  it('says how to set it up when there is no CLI', async () => {
+    const before = process.env.AI_CLI;
+    delete process.env.AI_CLI;
+    await expect(new CliPlanner().plan('make a furnace', state)).rejects.toThrow(/AI_CLI/);
+    if (before !== undefined) process.env.AI_CLI = before;
   });
 });
 

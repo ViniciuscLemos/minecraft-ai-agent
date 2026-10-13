@@ -81,7 +81,7 @@ export async function smelt(ctx: SkillContext, input: string, amount: number) {
     furnace.close();
   }
   // a furnace it put down just for this goes back in the pocket, like a player would: a
-  // Claude-planned run smelted its glass in the furnace meant for the house, left it on
+  // AI-planned run smelted its glass in the furnace meant for the house, left it on
   // the beach and the build came up one furnace short
   if (placed && bot.inventory.items().some((item) => item.name.endsWith('_pickaxe'))) {
     await equipBestTool(bot, furnaceBlock);

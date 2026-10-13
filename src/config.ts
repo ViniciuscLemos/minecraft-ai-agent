@@ -6,8 +6,8 @@ export interface Config {
   username: string;
   // players allowed to give orders; empty = anyone
   owners: string[];
-  // who turns !do requests into steps: Claude through the CLI, or the scripted plan
-  planner?: 'claude' | 'scripted';
+  // who turns !do requests into steps: an AI through its command-line program, or the scripted plan
+  planner?: 'ai' | 'scripted';
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -20,8 +20,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`BOT_NAME must have 3 to 16 letters, numbers or _: ${username}`);
   }
 
-  const planner = env.PLANNER || 'claude';
-  if (planner !== 'claude' && planner !== 'scripted') throw new Error(`PLANNER must be claude or scripted: ${planner}`);
+  const planner = env.PLANNER || 'ai';
+  if (planner !== 'ai' && planner !== 'scripted') throw new Error(`PLANNER must be ai or scripted: ${planner}`);
 
   return {
     planner,

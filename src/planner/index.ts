@@ -1,6 +1,6 @@
 // The planner turns a plain text request ("build a small house next to me") into a list of
 // skill steps, and gets the failed step back to plan again from where things are. The
-// backends (Claude through the CLI, or the scripted survival plan) all fit this interface,
+// backends (an AI through its command-line program, or the scripted survival plan) all fit this interface,
 // and the loop below doesn't care which one it talks to.
 import type { Step } from '../plans/survival.ts';
 import { runPlan, type PlanResult } from '../plans/run.ts';
@@ -43,7 +43,7 @@ export const SYSTEM_PROMPT = [
   'If a step failed, read why and plan the rest from the current state. Do not repeat what already worked.',
 ].join('\n');
 
-/** The steps format Claude has to answer in (its --json-schema). */
+/** The steps format the planner has to answer in (its --json-schema). */
 export const STEPS_SCHEMA = {
   type: 'object',
   properties: {
@@ -131,8 +131,8 @@ export async function carryOut(
   for (let round = 1; !result.ok && round <= replans; round++) {
     const failure = { step: result.failed.step, error: result.failed.error, done: result.results };
     // the same skill failing the same way twice in a row is the skill's problem, not the
-    // plan's: a Claude-planned run asked four times for "mine stone" at the bottom of a
-    // flooded staircase. Each new plan is a call on the Claude plan, so stop there.
+    // plan's: an AI-planned run asked four times for "mine stone" at the bottom of a
+    // flooded staircase. Each new plan costs a call, so stop there.
     const signature = `${failure.step.skill}: ${failure.error}`;
     if (signature === lastFailure) {
       ctx.log(`step ${result.failed.index + 1} failed the same way again (${failure.error}), giving up`);
