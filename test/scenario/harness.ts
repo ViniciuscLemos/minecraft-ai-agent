@@ -49,7 +49,7 @@ export async function startServer(port: number, folder?: string): Promise<TestSe
 
 /** A plain mineflayer player, without the agent's brain, that resolves once it's in the world. */
 export async function joinPlayer(username: string, port: number): Promise<Bot> {
-  const bot = mineflayer.createBot({ host: 'localhost', port, username, version: VERSION, auth: 'offline' });
+  const bot = mineflayer.createBot({ host: 'localhost', port, username, version: VERSION, auth: 'offline', hideErrors: true });
   await new Promise<void>((resolve, reject) => {
     bot.once('spawn', () => resolve());
     bot.once('kicked', (reason) => reject(new Error(`${username} was kicked: ${JSON.stringify(reason)}`)));

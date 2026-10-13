@@ -129,8 +129,6 @@ export function pageSetup({ center, title, subtitle }: { center?: Point } & Pane
     const events = new EventSource('/events');
     events.onmessage = (e) => {
       const text: string = JSON.parse(e.data);
-      // every pathfinder stop logs one of these; in a video they bury the lines that matter
-      if (text.startsWith('arrived at')) return;
       const line = document.createElement('div');
       // plans and failures are what a viewer should catch at a glance, and the reason at
       // the end of a step line reads better a bit dimmer than the step itself

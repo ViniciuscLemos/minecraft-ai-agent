@@ -25,6 +25,9 @@ export function createAgentBot(config: Config): Bot {
     username: config.username,
     // offline-mode server: no Microsoft account involved
     auth: 'offline',
+    // 1.21.1 sends an armor trim registry the protocol library can't fully read: harmless,
+    // but it printed a page of stack trace on every login
+    hideErrors: true,
   });
 
   bot.loadPlugin(pathfinder);
@@ -55,7 +58,6 @@ export function createAgentBot(config: Config): Bot {
 
   addReflexes(bot, (text) => log(bot, text), () => cancelTask(bot));
 
-  bot.on('goal_reached', () => log(bot, `arrived at ${position(bot)}`));
   // skills retry paths a lot (114 noPath in one survival run), and vanilla kicks
   // a player for chat spam, so the chat only hears about it once every 10 s
   let lastNoPath = 0;

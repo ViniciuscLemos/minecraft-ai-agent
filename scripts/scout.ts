@@ -44,7 +44,7 @@ const GROUPS: Record<string, string[]> = {
 async function scout(seed: string) {
   const server = await startServer(PORT, normalWorldFolder('.scout-server', seed, PORT));
   try {
-    const bot = mineflayer.createBot({ host: 'localhost', port: PORT, username: 'Scout', version: VERSION, auth: 'offline' });
+    const bot = mineflayer.createBot({ host: 'localhost', port: PORT, username: 'Scout', version: VERSION, auth: 'offline', hideErrors: true });
     await new Promise<void>((resolve) => bot.once('spawn', () => resolve()));
     await sleep(8000); // chunks around spawn
     const origin = bot.entity.position.floored();
