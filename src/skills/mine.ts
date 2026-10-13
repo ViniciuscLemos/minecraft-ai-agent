@@ -79,6 +79,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
   let stairSteps = 0;
   let stairMoves = 0;
   let failedWalks = 0;
+  let nextPickaxeTry = 0;
   let stairDir: Vec3 | undefined;
   // where the current staircase starts: the way back up when it has to start over
   let stairTop: Vec3 | undefined;
@@ -130,7 +131,7 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
 
     // checked before walking there: no point going to the stone without a pickaxe
     const tools = harvestToolNames(bot, block);
-    if (tools?.includes('wooden_pickaxe') && wantsStonePickaxe(bot.inventory.items())) {
+    if (tools?.includes('wooden_pickaxe') && Date.now() >= nextPickaxeTry && wantsStonePickaxe(bot.inventory.items())) {
       // a wooden pickaxe lasts 59 blocks: the survival run broke one halfway through its
       // stone. Like a player, it makes a stone one as soon as it has the cobblestone.
       try {
@@ -139,6 +140,9 @@ export async function mine(ctx: SkillContext, blockName: string, amount: number)
       } catch (error) {
         if (!(error instanceof SkillError) || ctx.signal.aborted) throw error;
         ctx.log(`couldn't make a stone pickaxe yet (${error.message})`);
+        // with no room for a table at the bottom of the stairs it failed (and said so) on
+        // every single block; the wooden one still has some life, try again in a minute
+        nextPickaxeTry = Date.now() + 60_000;
       }
     }
     if (tools && !bot.inventory.items().some((item) => tools.includes(item.name))) {
