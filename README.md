@@ -114,11 +114,14 @@ dig a staircase down to stone when none is exposed, a stone pickaxe, a furnace, 
 glass and panes, charcoal and torches, then it levels a spot and builds. A full run takes 17 to 30 minutes,
 most of it chopping.
 
-If a step fails, it looks at what it has and plans again from there (the furnace burns some of the planks
-the walls need, so it sometimes comes back for a few more logs). By default the plan is scripted
+If a step fails, it looks at what it has and plans again from there (usually a few logs short, when the
+pickaxes and crafting tables ate more wood than planned). While a plan runs, the house's materials are set
+aside, so crafting and the furnace use the leftovers first. By default the plan is scripted
 (`src/plans/survival.ts`).
 
 ![Timelapse of a scripted survival run, from the first log to the farmhouse](docs/survival.gif)
+
+![The farmhouse at the end of a survival run in a normal world](docs/survival.png)
 
 With `--planner ai` the same run is planned by the AI instead: it gets the request ("build a
 farmhouse"), the inventory, the trees and blocks around, the skill list and the house's bill of
