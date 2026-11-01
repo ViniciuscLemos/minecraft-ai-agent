@@ -18,10 +18,10 @@
     "mineflayer": "^4.39.0",
     "mineflayer-pathfinder": "^2.4.5",
     "prismarine-viewer": "^1.33.0",
-    "vec3": "^0.1.10"
+    "vec3": "^0.2.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "@types/pngjs": "^6.0.5",
     "gifenc": "^1.0.3",
     "playwright-core": "^1.64.0",
