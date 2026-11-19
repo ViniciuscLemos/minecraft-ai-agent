@@ -91,7 +91,10 @@ export function parseCommand(message: string): ParseResult {
   if (skill) return skill(args);
 
   const name = ALIASES[word.toLowerCase()];
-  if (!name) return { ok: false, error: `I don't know "!${word}". Try !help` };
+  if (!name) {
+    const guess = closestCommand(word.toLowerCase());
+    return { ok: false, error: guess ? `I don't know "!${word}". Did you mean !${guess}?` : `I don't know "!${word}". Try !help` };
+  }
 
   if (name !== 'goto') return { ok: true, command: { name } } as ParseResult;
 
@@ -101,6 +104,31 @@ export function parseCommand(message: string): ParseResult {
   }
   const [x, y, z] = numbers.length === 2 ? [numbers[0], null, numbers[1]] : numbers;
   return { ok: true, command: { name: 'goto', x: x!, y, z: z! } };
+}
+
+// edit distance, to catch a typo like !folow or !crfat
+function distance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) {
+      next[j] = Math.min(row[j]! + 1, next[j - 1]! + 1, row[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    row = next;
+  }
+  return row[b.length]!;
+}
+
+function closestCommand(word: string): string | null {
+  // short words get one letter of slack, or "!go" would turn into a guess for everything
+  const slack = word.length >= 5 ? 2 : 1;
+  let best: string | null = null;
+  let bestDistance = slack + 1;
+  for (const command of [...Object.keys(ALIASES), ...Object.keys(SKILL_COMMANDS), 'do']) {
+    const d = distance(word, command);
+    if (d < bestDistance) [best, bestDistance] = [command, d];
+  }
+  return best;
 }
 
 /** Whether this player can give orders. */

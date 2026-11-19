@@ -32,6 +32,8 @@ describe('parseCommand', () => {
     expect(parseCommand('!goto 10')).toEqual({ ok: false, error: 'Use !goto <x> <z> or !goto <x> <y> <z>' });
     expect(parseCommand('!goto a b')).toMatchObject({ ok: false });
     expect(parseCommand('!dance')).toEqual({ ok: false, error: 'I don\'t know "!dance". Try !help' });
+    expect(parseCommand('!folow')).toEqual({ ok: false, error: 'I don\'t know "!folow". Did you mean !follow?' });
+    expect(parseCommand('!crfat stick')).toEqual({ ok: false, error: 'I don\'t know "!crfat". Did you mean !craft?' });
   });
 });
 
