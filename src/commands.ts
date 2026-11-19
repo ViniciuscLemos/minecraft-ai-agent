@@ -48,11 +48,28 @@ const ALIASES: Record<string, Command['name']> = {
 const SKILL_COMMANDS: Record<string, (args: string[]) => ParseResult> = {
   wood: ([n = '4']) => skillWith('collect_wood', { amount: Number(n) }, isCount(n), 'Use !wood <how many logs>'),
   chop: (args) => SKILL_COMMANDS.wood!(args),
-  craft: ([item, n = '1']) => skillWith('craft', { item, amount: Number(n) }, !!item && isCount(n), 'Use !craft <item> [how many]'),
-  mine: ([block, n = '1']) => skillWith('mine', { block, amount: Number(n) }, !!block && isCount(n), 'Use !mine <block> [how many]'),
-  place: ([item]) => skillWith('place', { item }, !!item, 'Use !place <item>'),
+  craft: (args) => {
+    const [item, n] = itemAndCount(args);
+    return skillWith('craft', { item, amount: Number(n) }, !!item && isCount(n), 'Use !craft <item> [how many]');
+  },
+  mine: (args) => {
+    const [block, n] = itemAndCount(args);
+    return skillWith('mine', { block, amount: Number(n) }, !!block && isCount(n), 'Use !mine <block> [how many]');
+  },
+  place: (args) => {
+    const [item] = itemAndCount(args);
+    return skillWith('place', { item }, !!item, 'Use !place <item>');
+  },
   build: ([structure]) => skillWith('build', { structure }, !!structure, 'Use !build <farmhouse|cottage|house|hut>'),
 };
+
+// "!craft wooden pickaxe 2" is how people type it in chat; the game's name is wooden_pickaxe.
+// The last word is the amount when it's a number
+function itemAndCount(args: string[]): [string, string] {
+  const last = args.at(-1) ?? '';
+  const words = /^\d+$/.test(last) ? args.slice(0, -1) : args;
+  return [words.join('_').toLowerCase(), words.length < args.length ? last : '1'];
+}
 
 const isCount = (text: string) => /^\d+$/.test(text) && Number(text) >= 1 && Number(text) <= 64;
 

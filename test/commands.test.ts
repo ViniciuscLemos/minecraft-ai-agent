@@ -46,6 +46,12 @@ describe('skill commands', () => {
     expect(parseCommand('!BUILD house')).toMatchObject({ command: { skill: 'build', args: { structure: 'house' } } });
   });
 
+  it('take item names with spaces, the way people type them', () => {
+    expect(parseCommand('!craft wooden pickaxe 2')).toMatchObject({ command: { args: { item: 'wooden_pickaxe', amount: 2 } } });
+    expect(parseCommand('!mine Iron Ore')).toMatchObject({ command: { args: { block: 'iron_ore', amount: 1 } } });
+    expect(parseCommand('!place crafting table')).toMatchObject({ command: { args: { item: 'crafting_table' } } });
+  });
+
   it('have sensible defaults', () => {
     expect(parseCommand('!chop')).toMatchObject({ command: { skill: 'collect_wood', args: { amount: 4 } } });
   });
