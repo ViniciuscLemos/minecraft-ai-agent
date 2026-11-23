@@ -3,7 +3,7 @@
 // through the floor and no walking into lava or water when there's another way.
 import mineflayer, { type Bot } from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
-import { canCommand, HELP, parseCommand, type Command } from './commands.ts';
+import { canCommand, helpLines, parseCommand, type Command } from './commands.ts';
 import type { Config } from './config.ts';
 import { addReflexes } from './reflexes.ts';
 import { CliPlanner } from './planner/cli.ts';
@@ -143,7 +143,7 @@ export function run(bot: Bot, command: Command, player: string) {
 
   switch (command.name) {
     case 'help':
-      HELP.forEach((line) => bot.chat(line));
+      helpLines(command.topic).forEach((line) => bot.chat(line));
       return;
 
     case 'follow':

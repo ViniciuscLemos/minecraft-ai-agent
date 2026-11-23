@@ -2,7 +2,7 @@
 // Parsing lives apart from the bot so it can be tested without a server.
 
 export type Command =
-  | { name: 'help' }
+  | { name: 'help'; topic?: string }
   | { name: 'follow' }
   | { name: 'come' }
   | { name: 'stop' }
@@ -77,6 +77,17 @@ function skillWith(skill: string, args: Record<string, unknown>, valid: boolean,
   return valid ? { ok: true, command: { name: 'skill', skill, args } } : { ok: false, error: usage };
 }
 
+/**
+ * The help lines to say in chat. Twelve lines flood the chat, so "!help craft" (or
+ * "!help !craft") gives just that one; a word it doesn't know gives the whole list.
+ */
+export function helpLines(topic?: string): string[] {
+  const word = topic?.replace(/^!/, '').toLowerCase();
+  const name = word && (ALIASES[word] ?? (word in SKILL_COMMANDS || word === 'do' ? word : undefined));
+  const lines = name ? HELP.filter((line) => line.startsWith(`!${name} `)) : [];
+  return lines.length ? lines : HELP;
+}
+
 /** Returns null when the message isn't a command (normal chat), so the bot ignores it. */
 export function parseCommand(message: string): ParseResult {
   const text = message.trim();
@@ -96,6 +107,7 @@ export function parseCommand(message: string): ParseResult {
     return { ok: false, error: guess ? `I don't know "!${word}". Did you mean !${guess}?` : `I don't know "!${word}". Try !help` };
   }
 
+  if (name === 'help') return { ok: true, command: args[0] ? { name, topic: args[0] } : { name } };
   if (name !== 'goto') return { ok: true, command: { name } } as ParseResult;
 
   const numbers = args.map(Number);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canCommand, parseCommand } from '../src/commands.ts';
+import { canCommand, HELP, helpLines, parseCommand } from '../src/commands.ts';
 import { loadConfig } from '../src/config.ts';
 
 describe('parseCommand', () => {
@@ -62,6 +62,22 @@ describe('skill commands', () => {
     expect(parseCommand('!craft')).toEqual({ ok: false, error: 'Use !craft <item> [how many]' });
     expect(parseCommand('!wood lots')).toEqual({ ok: false, error: 'Use !wood <how many logs>' });
     expect(parseCommand('!mine stone 999')).toEqual({ ok: false, error: 'Use !mine <block> [how many]' });
+  });
+});
+
+describe('help', () => {
+  it('can be about one command', () => {
+    expect(parseCommand('!help craft')).toEqual({ ok: true, command: { name: 'help', topic: 'craft' } });
+    expect(helpLines('craft')).toEqual(['!craft <item> [n] - craft something, like !craft wooden_pickaxe']);
+    expect(helpLines('!GOTO')).toEqual(['!goto <x> <z> or !goto <x> <y> <z> - walk to a place']);
+    // an alias finds the command it stands for
+    expect(helpLines('inv')).toEqual(['!inventory - list what it carries']);
+  });
+
+  it('gives the whole list without a topic or with one it does not know', () => {
+    expect(parseCommand('!help')).toEqual({ ok: true, command: { name: 'help' } });
+    expect(helpLines()).toBe(HELP);
+    expect(helpLines('dance')).toBe(HELP);
   });
 });
 

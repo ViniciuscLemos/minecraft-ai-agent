@@ -73,7 +73,7 @@ Then open Minecraft 1.21.1, join `localhost` and type in the chat:
 | `!build <farmhouse\|cottage\|house\|hut>` | builds next to it, and lists the missing materials if it can't |
 | `!do <anything>` | asks in plain words, like `!do make a furnace`: the AI plans the steps, the bot runs them |
 
-Item names can be typed with spaces (`!craft wooden pickaxe 2`), and a mistyped command gets a suggestion (`!folow` -> did you mean !follow?).
+`!help craft` shows just that command instead of the whole list. Item names can be typed with spaces (`!craft wooden pickaxe 2`), and a mistyped command gets a suggestion (`!folow` -> did you mean !follow?).
 
 Settings like the bot name and who can give it orders go in `.env` (see `.env.example`).
 
